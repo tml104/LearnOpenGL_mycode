@@ -19,7 +19,7 @@ void processInput(GLFWwindow* window);
 const unsigned int SCR_WIDTH = 800;
 const unsigned int SCR_HEIGHT = 600;
 
-// 全局变量
+// 全局变量1
 float mixValue = 0.2f;
 
 int main()
