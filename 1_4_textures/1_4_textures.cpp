@@ -58,7 +58,7 @@ int main()
         return -1;
     }
     glfwMakeContextCurrent(window);
-    glfwSetWindowPos(window, 500, 500);
+    glfwSetWindowPos(window, 200, 200);
     glfwSetFramebufferSizeCallback(window, framebuffer_size_callback);
     glfwSetCursorPosCallback(window, mouse_callback);
     glfwSetScrollCallback(window, scroll_callback);
@@ -200,9 +200,26 @@ int main()
         // 箱子
         ourShader.use();
         ourShader.setVec3("objectColor", 1.0f, 0.5f, 0.31f);
-        ourShader.setVec3("lightColor", 1.0f, 1.0f, 1.0f);
-        ourShader.setVec3("lightPos", lightPos);
+
+        // -> 光源颜色
+        glm::vec3 lightColor;
+        lightColor.x = sin(glfwGetTime() * 2.0f);
+        lightColor.y = sin(glfwGetTime() * 0.7f);
+        lightColor.z = sin(glfwGetTime() * 1.3f);
+
+        glm::vec3 diffuseColor = lightColor * glm::vec3(0.5f); // 降低影响
+        glm::vec3 ambientColor = diffuseColor * glm::vec3(0.2f); // 很低影响
+
+        ourShader.setVec3("light.ambient", ambientColor);
+        ourShader.setVec3("light.diffuse", diffuseColor);
+        ourShader.setVec3("light.specular", 1.0f, 1.0f, 1.0f);
+        ourShader.setVec3("light.position", lightPos);
         ourShader.setVec3("viewPos", camera.Position);
+
+        ourShader.setVec3("material.ambient", 1.0f, 0.5f, 0.31f);
+        ourShader.setVec3("material.diffuse", 1.0f, 0.5f, 0.31f);
+        ourShader.setVec3("material.specular", 0.5f, 0.5f, 0.5f);
+        ourShader.setFloat("material.shininess", 32.0f);
 
         glm::mat4 model = glm::mat4(1.0f); // model: 不变
         glm::mat4 view = glm::mat4(1.0f); // view：稍后做变换
@@ -272,6 +289,18 @@ void processInput(GLFWwindow* window)
         camera.ProcessKeyboard(LEFT, deltaTime);
     if (glfwGetKey(window, GLFW_KEY_D) == GLFW_PRESS)
         camera.ProcessKeyboard(RIGHT, deltaTime);
+
+    // 为了方便远程的尝试
+    const float keyboardMovmentSpeed = 5.0f;
+
+    if (glfwGetKey(window, GLFW_KEY_I) == GLFW_PRESS)
+        camera.ProcessMouseMovement(0.0f, keyboardMovmentSpeed);
+    if (glfwGetKey(window, GLFW_KEY_K) == GLFW_PRESS)
+        camera.ProcessMouseMovement(0.0f, -keyboardMovmentSpeed);
+    if (glfwGetKey(window, GLFW_KEY_J) == GLFW_PRESS)
+        camera.ProcessMouseMovement(-keyboardMovmentSpeed, 0.0f);
+    if (glfwGetKey(window, GLFW_KEY_L) == GLFW_PRESS)
+        camera.ProcessMouseMovement(keyboardMovmentSpeed, 0.0f);
 }
 
 // glfw: whenever the window size changed (by OS or user resize) this callback function executes
