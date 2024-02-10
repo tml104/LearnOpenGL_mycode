@@ -185,10 +185,12 @@ int main()
     // 加载纹理
     unsigned int diffuseMap = loadTexture("container2.png");
     unsigned int specularMap = loadTexture("container2_specular.png");
+    unsigned int emissiveMap = loadTexture("matrix.jpg");
 
     ourShader.use();
     ourShader.setInt("material.diffuse", 0);
     ourShader.setInt("material.specular", 1);
+    ourShader.setInt("material.emissive", 2);
 
     //线框模式
     //glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
@@ -233,6 +235,9 @@ int main()
 
         glActiveTexture(GL_TEXTURE1);
         glBindTexture(GL_TEXTURE_2D, specularMap);
+
+        glActiveTexture(GL_TEXTURE2);
+        glBindTexture(GL_TEXTURE_2D, emissiveMap);
 
         glm::mat4 model = glm::mat4(1.0f); // model: 不变
         glm::mat4 view = glm::mat4(1.0f); // view：稍后做变换

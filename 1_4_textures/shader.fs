@@ -11,6 +11,7 @@ uniform vec3 viewPos;
 struct Material {
     sampler2D diffuse;
     sampler2D specular;
+    sampler2D emissive;
     float shininess;
 }; 
 
@@ -42,6 +43,9 @@ void main()
     float spec = pow(max(dot(viewDir, reflectDir), 0.0), material.shininess);
     vec3 specular = light.specular * (spec * (texture(material.specular, TexCoords).rgb));  
 
-    vec3 result = ambient + diffuse + specular;
+    // 发射光
+    vec3 emissive = texture(material.emissive, TexCoords).rgb;
+
+    vec3 result = ambient + diffuse + specular + emissive;
     FragColor = vec4(result, 1.0);
 }
