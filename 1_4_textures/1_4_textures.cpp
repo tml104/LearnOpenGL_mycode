@@ -134,6 +134,19 @@ int main()
         -0.5f,  0.5f, -0.5f,  0.0f,  1.0f,  0.0f,  0.0f,  1.0f
     };
 
+    glm::vec3 cubePositions[] = {
+    glm::vec3(0.0f,  0.0f,  0.0f),
+    glm::vec3(2.0f,  5.0f, -15.0f),
+    glm::vec3(-1.5f, -2.2f, -2.5f),
+    glm::vec3(-3.8f, -2.0f, -12.3f),
+    glm::vec3(2.4f, -0.4f, -3.5f),
+    glm::vec3(-1.7f,  3.0f, -7.5f),
+    glm::vec3(1.3f, -2.0f, -2.5f),
+    glm::vec3(1.5f,  2.0f, -2.5f),
+    glm::vec3(1.5f,  0.2f, -1.5f),
+    glm::vec3(-1.3f,  1.0f, -1.5f)
+    };
+
     // 大盒子
     unsigned int VBO;
     glGenBuffers(1, &VBO);
@@ -185,12 +198,10 @@ int main()
     // 加载纹理
     unsigned int diffuseMap = loadTexture("container2.png");
     unsigned int specularMap = loadTexture("container2_specular.png");
-    unsigned int emissiveMap = loadTexture("matrix.jpg");
 
     ourShader.use();
     ourShader.setInt("material.diffuse", 0);
     ourShader.setInt("material.specular", 1);
-    ourShader.setInt("material.emissive", 2);
 
     //线框模式
     //glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
@@ -222,7 +233,9 @@ int main()
         ourShader.setVec3("light.ambient", 0.2f, 0.2f, 0.2f);
         ourShader.setVec3("light.diffuse", 0.5f, 0.5f, 0.5f);
         ourShader.setVec3("light.specular", 1.0f, 1.0f, 1.0f);
-        ourShader.setVec3("light.position", lightPos);
+        //ourShader.setVec3("light.position", lightPos);
+        ourShader.setVec3("light.direction", -0.2f, -1.0f, -0.3f);
+
 
         //ourShader.setVec3("material.ambient", 1.0f, 0.5f, 0.31f);
         //ourShader.setVec3("material.diffuse", 1.0f, 0.5f, 0.31f);
@@ -236,9 +249,6 @@ int main()
         glActiveTexture(GL_TEXTURE1);
         glBindTexture(GL_TEXTURE_2D, specularMap);
 
-        glActiveTexture(GL_TEXTURE2);
-        glBindTexture(GL_TEXTURE_2D, emissiveMap);
-
         glm::mat4 model = glm::mat4(1.0f); // model: 不变
         glm::mat4 view = glm::mat4(1.0f); // view：稍后做变换
         glm::mat4 projection = glm::mat4(1.0f); // projection: 稍后做变换
@@ -246,12 +256,22 @@ int main()
         view = camera.GetViewMatrix();
         projection = glm::perspective(glm::radians(camera.Zoom), (float)SCR_WIDTH / (float)SCR_HEIGHT, 0.1f, 100.0f);
 
-        ourShader.setMatrix4("model", model);
+        //ourShader.setMatrix4("model", model);
         ourShader.setMatrix4("view", view);
         ourShader.setMatrix4("projection", projection);
 
         glBindVertexArray(VAO);
-        glDrawArrays(GL_TRIANGLES, 0, 36);
+
+        for (unsigned int j = 0; j < 10; j++) {
+            model = glm::mat4(1.0f);
+            model = glm::translate(model, cubePositions[j]);
+            float angle = 20.0f * j;
+            model = glm::rotate(model, glm::radians(angle), glm::vec3(1.0f, 0.3f, 0.5f));
+            ourShader.setMatrix4("model", model);
+
+            glDrawArrays(GL_TRIANGLES, 0, 36);
+        }
+
 
         // 光源盒子
         lightingCubeShader.use();
