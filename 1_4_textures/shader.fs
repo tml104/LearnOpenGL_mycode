@@ -138,15 +138,15 @@ float LinearizeDepth(float depth)
 
 void main()
 {    
-    // vec3 norm = normalize(Normal);
-    // vec3 viewDir = normalize(viewPos - FragPos);
+    vec3 norm = normalize(Normal);
+    vec3 viewDir = normalize(viewPos - FragPos);
 
-    // vec3 result = calDirLight(dirLight, norm, viewDir);
-    // result += calPointLight(pointLight, norm, FragPos, viewDir);
-    // result += calSpotLight(spotLight, norm, FragPos, viewDir);
+    vec3 result = calDirLight(dirLight, norm, viewDir);
+    result += calPointLight(pointLight, norm, FragPos, viewDir);
+    result += calSpotLight(spotLight, norm, FragPos, viewDir);
 
-    // FragColor = vec4(result, 1.0);
+    FragColor = vec4(result, 1.0);
 
-    float depth = LinearizeDepth(gl_FragCoord.z) / far; // 为了演示除以 far
-    FragColor = vec4(vec3(depth), 1.0);
+    // float depth = LinearizeDepth(gl_FragCoord.z) / far; // 为了演示除以 far
+    // FragColor = vec4(vec3(depth), 1.0);
 }

@@ -81,10 +81,15 @@ int main()
     // -----------------------------
     glEnable(GL_DEPTH_TEST);
 
+    glEnable(GL_STENCIL_TEST);
+    glStencilFunc(GL_NOTEQUAL, 1, 0xFF);
+    glStencilOp(GL_KEEP, GL_KEEP, GL_REPLACE);
+
     // build and compile our shader program
     // ------------------------------------
     Shader ourShader("shader.vs", "shader.fs"); // you can name your shader files however you like
     Shader lightingCubeShader("lightingCubeShader.vs", "lightingCubeShader.fs"); // you can name your shader files however you like
+    Shader singleColorShader("singleColorShader.vs", "singleColorShader.fs");
 
     // load models
     //Model ourModel("D:/code/nanosuit/nanosuit.obj"); // VAO以及VBO、EBO等绑定在使用assimp加载模型、遍历模型、保存到自定义的mesh数据结构后，在mesh的setup函数中定义了
@@ -168,9 +173,13 @@ int main()
         // render
         // ------
         glClearColor(0.2f, 0.3f, 0.3f, 1.0f);
-        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT | GL_STENCIL_BUFFER_BIT);
 
-        // 渲染加载的模型
+        // 渲染原始模型时的模版缓冲更新设置：始终通过模版测试，令通过深度测试与模版测试的片段更新对应模版缓冲中的值为ref值（此处为1）
+        glStencilFunc(GL_ALWAYS, 1, 0xFF);
+        glStencilMask(0xFF);
+
+        // 渲染加载的模型：着色器设置
         ourShader.use();
 
         ourShader.setVec3("objectColor", 1.0f, 0.5f, 0.31f); // no use?
@@ -217,10 +226,29 @@ int main()
         ourShader.setMatrix4("model", model);
 
         ourModel.Draw(ourShader);
-
-
         ourModel2.Draw(ourShader);
 
+        // 渲染稍微放大一点的模型：令模版测试不为1的片段通过测试。当模型放大后，只有放大凸出来的那部分会使用纯色着色器渲染。同时阻止模版更新与深度测试
+        glStencilFunc(GL_NOTEQUAL, 1, 0xFF);
+        glStencilMask(0x00);
+        glDisable(GL_DEPTH_TEST);
+
+        singleColorShader.use();
+
+
+        singleColorShader.setMatrix4("projection", projection);
+        singleColorShader.setMatrix4("view", view);
+
+        model = glm::mat4(1.0f);
+        model = glm::translate(model, glm::vec3(0.0f, 0.0f, 0.0f));
+        //model = glm::scale(model, glm::vec3(1.1f, 1.1f, 1.1f)); //些许放大，由于模型原点不在模型中心而在模型底部因此这个方法有问题
+        singleColorShader.setMatrix4("model", model);
+
+        ourModel.Draw(singleColorShader);
+        ourModel2.Draw(singleColorShader);
+
+        glStencilMask(0xFF); // 重设深度测试与模版测试设定
+        glEnable(GL_DEPTH_TEST);
 
         // 渲染点光源盒子
         lightingCubeShader.use();
