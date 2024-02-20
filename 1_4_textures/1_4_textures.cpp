@@ -87,7 +87,9 @@ int main()
     Shader lightingCubeShader("lightingCubeShader.vs", "lightingCubeShader.fs"); // you can name your shader files however you like
 
     // load models
-    Model ourModel("D:/code/nanosuit/nanosuit.obj"); // VAO以及VBO、EBO等绑定在使用assimp加载模型、遍历模型、保存到自定义的mesh数据结构后，在mesh的setup函数中定义了
+    //Model ourModel("D:/code/nanosuit/nanosuit.obj"); // VAO以及VBO、EBO等绑定在使用assimp加载模型、遍历模型、保存到自定义的mesh数据结构后，在mesh的setup函数中定义了
+    Model ourModel("D:/code/ganyu2/scene.gltf");
+    Model ourModel2("D:/code/nanosuit/nanosuit.obj");
 
     // 光源模型
     float vertices[] = {
@@ -215,6 +217,9 @@ int main()
         ourShader.setMatrix4("model", model);
 
         ourModel.Draw(ourShader);
+
+
+        ourModel2.Draw(ourShader);
 
 
         // 渲染点光源盒子
