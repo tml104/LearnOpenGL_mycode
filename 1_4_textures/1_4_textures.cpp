@@ -81,6 +81,9 @@ int main()
     // -----------------------------
     glEnable(GL_DEPTH_TEST);
 
+    glEnable(GL_BLEND);
+    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+
     // build and compile our shader program
     // ------------------------------------
     Shader ourShader("blendShader.vs", "blendShader.fs"); // you can name your shader files however you like
@@ -209,7 +212,7 @@ int main()
     glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 5 * sizeof(float), (void*)(3*sizeof(float)));
     glEnableVertexAttribArray(1);
 
-    // 透明物（植物） VAO
+    // 透明物 VAO
     unsigned int transparentVBO;
     glGenBuffers(1, &transparentVBO);
 
@@ -232,12 +235,13 @@ int main()
     // load textures
     unsigned int cubeTexture = loadTexture("./marble.jpg");
     unsigned int floorTexture = loadTexture("./metal.png");
-    unsigned int transparentTexture = loadTexture("./grass.png");
+    //unsigned int transparentTexture = loadTexture("./grass.png");
+    unsigned int transparentTexture = loadTexture("./blending_transparent_window.png");
 
     ourShader.use();
     ourShader.setInt("texture1", 0);
 
-    // 透明植被的坐标
+    // 透明体的坐标
     vector<glm::vec3> vegetation
     {
         glm::vec3(-1.5f, 0.0f, -0.48f),
@@ -246,6 +250,8 @@ int main()
         glm::vec3(-0.3f, 0.0f, -2.3f),
         glm::vec3(0.5f, 0.0f, -0.6f)
     };
+
+
 
     // render loop
     // -----------
@@ -303,18 +309,34 @@ int main()
         glBindTexture(GL_TEXTURE_2D, floorTexture);
         glDrawArrays(GL_TRIANGLES, 0, 6);
 
-        // 渲染：植被
+        // 渲染：基于排序后的
         glBindVertexArray(transparentVAO);
         glBindTexture(GL_TEXTURE_2D, transparentTexture);
-        for (unsigned int i = 0; i < vegetation.size(); i++)
-        {
+        //for (unsigned int i = 0; i < vegetation.size(); i++)
+        //{
+        //    model = glm::mat4(1.0f);
+        //    model = glm::translate(model, vegetation[i]);
+        //    ourShader.setMatrix4("model", model);
+        //    glDrawArrays(GL_TRIANGLES, 0, 6);
+        //}
+
+        // 排序（需要在循环中）
+        std::map<float, glm::vec3> sorted_vegetation;
+        for (unsigned int i = 0; i < vegetation.size(); i++) {
+            float dis = glm::length(camera.Position - vegetation[i]);
+            sorted_vegetation[dis] = vegetation[i];
+        }
+
+        for (auto it = sorted_vegetation.rbegin(); it != sorted_vegetation.rend(); it++) {
+            glm::vec3 current_window_position = it->second;
+
             model = glm::mat4(1.0f);
-            model = glm::translate(model, vegetation[i]);
+            model = glm::translate(model, current_window_position);
             ourShader.setMatrix4("model", model);
             glDrawArrays(GL_TRIANGLES, 0, 6);
         }
 
-        // 渲染点光源盒子
+        // 渲染点光源盒子（注意其实这里有点问题，因为这个东西也应该参与排序才对）
         lightingCubeShader.use();
 
         model = glm::mat4(1.0f);
