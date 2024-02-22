@@ -250,19 +250,23 @@ int main()
     glBindFramebuffer(GL_FRAMEBUFFER, framebuffer); // 绑定当前framebuffer为新建的
 
     // -> 纹理附件
+    const float buf_scale = 6.0;
+    const unsigned int buf_width = SCR_WIDTH / buf_scale;
+    const unsigned int buf_height = SCR_HEIGHT / buf_scale;
+
     unsigned int textureColorbuffer;
     glGenTextures(1, &textureColorbuffer); // 创建纹理对象
     glBindTexture(GL_TEXTURE_2D, textureColorbuffer); // 绑定纹理对象
-    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, SCR_WIDTH, SCR_HEIGHT, 0, GL_RGB, GL_UNSIGNED_BYTE, NULL); // 设置纹理对象，但是不写入数据
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR); // 环绕方式随意（此处没有设置），放缩处理任意
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, buf_width, buf_height, 0, GL_RGB, GL_UNSIGNED_BYTE, NULL); // 设置纹理对象，但是不写入数据
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST); // 环绕方式随意（此处没有设置），放缩处理任意
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
     glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, textureColorbuffer, 0); // 将此纹理对象绑定成为当前framebuffer的纹理附件
 
     // -> 渲染缓冲对象附件（深度与模版缓冲）
     unsigned int rbo;
     glGenRenderbuffers(1, &rbo); // 创建渲染缓冲对象rbo
     glBindRenderbuffer(GL_RENDERBUFFER, rbo); // 绑定为当前渲染缓冲对象rbo（与当前绑定着的framebuffer关联）
-    glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH24_STENCIL8, SCR_WIDTH, SCR_HEIGHT); // 设置rbo
+    glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH24_STENCIL8, buf_width, buf_height); // 设置rbo
     glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_STENCIL_ATTACHMENT, GL_RENDERBUFFER, rbo); // 将渲染缓冲对象附加到帧缓冲的深度和模板附件上
     if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE) // 检查帧缓冲是否是完整的，如果不是，我们将打印错误信息
         cout << "ERROR::FRAMEBUFFER:: Framebuffer is not complete!" << endl;
@@ -287,6 +291,8 @@ int main()
 
         // render
         // ------
+        glViewport(0, 0, buf_width, buf_height);
+
         glBindFramebuffer(GL_FRAMEBUFFER, framebuffer);
         glEnable(GL_DEPTH_TEST); //后续渲染quad的时候会禁用，因此这里要重新启用
 
@@ -345,6 +351,8 @@ int main()
         glDrawArrays(GL_TRIANGLES, 0, 36);
 
         // 在默认帧缓冲中渲染quad
+        glViewport(0, 0, SCR_WIDTH, SCR_HEIGHT);
+
         glBindFramebuffer(GL_FRAMEBUFFER, 0);
         glDisable(GL_DEPTH_TEST);
         glClearColor(1.0f, 1.0f, 1.0f, 1.0f);

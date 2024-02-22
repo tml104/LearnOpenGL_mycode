@@ -51,7 +51,7 @@ vec4 kernelProcess(){
 
 void main()
 { 
-    // FragColor = texture(screenTexture, TexCoords); // 从 帧缓冲纹理 中采样
+    FragColor = texture(screenTexture, TexCoords); // 从 帧缓冲纹理 中采样
 
     // 反相
     // FragColor = vec4(vec3(1.0 - texture(screenTexture, TexCoords)), 1.0);
@@ -62,5 +62,5 @@ void main()
     // FragColor = vec4(average, average, average, 1.0);
 
     // 核效果
-    FragColor = kernelProcess();
+    // FragColor = kernelProcess();
 }
