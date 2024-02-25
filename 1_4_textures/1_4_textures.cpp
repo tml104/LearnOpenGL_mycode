@@ -299,6 +299,10 @@ int main()
     glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(float), (void*)(2 * sizeof(float)));
     glEnableVertexAttribArray(1);
 
+    // 加载纳米机器人
+    Model ourModel2("D:/code/nanosuit/nanosuit.obj");
+
+
     // load textures
     unsigned int cubeTexture = loadTexture("./marble.jpg");
     unsigned int floorTexture = loadTexture("./metal.png");
@@ -399,6 +403,9 @@ int main()
         ourShader.setMatrix4("model", model);
 
         glDrawArrays(GL_TRIANGLES, 0, 36);
+
+        // 渲染：模型
+        ourModel2.Draw(ourShader);
 
         // 渲染：地板
         //model = glm::mat4(1.0f);
