@@ -88,6 +88,7 @@ int main()
     Shader lightingCubeShader("lightingCubeShader.vs", "lightingCubeShader.fs"); // you can name your shader files however you like
     Shader screenShader("framebuffersScreenShader.vs", "framebuffersScreenShader.fs");
     Shader skyboxShader("skyboxShader.vs", "skyboxShader.fs");
+    Shader skyboxExerciseShader("skyboxExercise.vs", "skyboxExercise.fs");
 
     // load models
 
@@ -300,7 +301,7 @@ int main()
     glEnableVertexAttribArray(1);
 
     // 加载纳米机器人
-    Model ourModel2("D:/code/nanosuit/nanosuit.obj");
+    Model ourModel2("D:/code/nanosuit_reflection/nanosuit.obj");
 
 
     // load textures
@@ -326,6 +327,9 @@ int main()
 
     skyboxShader.use();
     skyboxShader.setInt("skybox", 0);
+
+    skyboxExerciseShader.use();
+    skyboxExerciseShader.setInt("skybox", 4);
 
     // framebuffer
     unsigned int framebuffer;
@@ -405,7 +409,16 @@ int main()
         glDrawArrays(GL_TRIANGLES, 0, 36);
 
         // 渲染：模型
-        ourModel2.Draw(ourShader);
+        skyboxExerciseShader.use();
+        skyboxExerciseShader.setVec3("cameraPos", camera.Position);
+        skyboxExerciseShader.setMatrix4("projection", projection);
+        skyboxExerciseShader.setMatrix4("view", view);
+        skyboxExerciseShader.setMatrix4("model", model);
+
+        glActiveTexture(GL_TEXTURE4);
+        glBindTexture(GL_TEXTURE_CUBE_MAP, cubemapTexture);
+
+        ourModel2.Draw(skyboxExerciseShader); 
 
         // 渲染：地板
         //model = glm::mat4(1.0f);
