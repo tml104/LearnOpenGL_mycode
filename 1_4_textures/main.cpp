@@ -84,9 +84,9 @@ int main()
 
     // build and compile our shader program
     // ------------------------------------
-    Shader ourShader("cubeWithSkyboxShader.vs", "cubeWithSkyboxShader.fs"); // you can name your shader files however you like
-    Shader lightingCubeShader("lightingCubeShader.vs", "lightingCubeShader.fs"); // you can name your shader files however you like
-    Shader screenShader("framebuffersScreenShader.vs", "framebuffersScreenShader.fs");
+    Shader ourShader("cubeWithSkyboxShader.vs", "cubeWithSkyboxShader.fs"); // 渲染方块的 着色器
+    Shader lightingCubeShader("lightingCubeShader.vs", "lightingCubeShader.fs"); // 渲染光源盒子的 着色器
+    Shader screenShader("framebuffersScreenShader.vs", "framebuffersScreenShader.fs"); // （用于在屏幕上显示内容的） 后处理着色器
     Shader skyboxShader("skyboxShader.vs", "skyboxShader.fs");
     Shader skyboxExerciseShader("skyboxExercise.vs", "skyboxExercise.fs");
 
