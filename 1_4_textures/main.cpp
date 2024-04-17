@@ -84,11 +84,11 @@ int main()
 
     // build and compile our shader program
     // ------------------------------------
-    Shader ourShader("cubeWithSkyboxShader.vs", "cubeWithSkyboxShader.fs"); // 渲染方块的 着色器
-    Shader lightingCubeShader("lightingCubeShader.vs", "lightingCubeShader.fs"); // 渲染光源盒子的 着色器
-    Shader screenShader("framebuffersScreenShader.vs", "framebuffersScreenShader.fs"); // （用于在屏幕上显示内容的） 后处理着色器
-    Shader skyboxShader("skyboxShader.vs", "skyboxShader.fs");
-    Shader skyboxExerciseShader("skyboxExercise.vs", "skyboxExercise.fs");
+    Shader ourShader("./shaders/cubeWithSkyboxShader.vs", "./shaders/cubeWithSkyboxShader.fs"); // 渲染方块的 着色器
+    Shader lightingCubeShader("./shaders/lightingCubeShader.vs", "./shaders/lightingCubeShader.fs"); // 渲染光源盒子的 着色器
+    Shader screenShader("./shaders/framebuffersScreenShader.vs", "./shaders/framebuffersScreenShader.fs"); // （用于在屏幕上显示内容的） 后处理着色器
+    Shader skyboxShader("./shaders/skyboxShader.vs", "./shaders/skyboxShader.fs");
+    Shader skyboxExerciseShader("./shaders/skyboxExercise.vs", "./shaders/skyboxExercise.fs");
 
     // load models
 
@@ -305,17 +305,17 @@ int main()
 
 
     // load textures
-    unsigned int cubeTexture = loadTexture("./marble.jpg");
-    unsigned int floorTexture = loadTexture("./metal.png");
+    unsigned int cubeTexture = loadTexture("./resources/marble.jpg");
+    unsigned int floorTexture = loadTexture("./resources/metal.png");
 
     vector<std::string> faces
     {
-        "./skybox/right.jpg",
-        "./skybox/left.jpg",
-        "./skybox/top.jpg",
-        "./skybox/bottom.jpg",
-        "./skybox/front.jpg",
-        "./skybox/back.jpg"
+        "./resources/skybox/right.jpg",
+        "./resources/skybox/left.jpg",
+        "./resources/skybox/top.jpg",
+        "./resources/skybox/bottom.jpg",
+        "./resources/skybox/front.jpg",
+        "./resources/skybox/back.jpg"
     };
     unsigned int cubemapTexture = loadCubemap(faces);
 
