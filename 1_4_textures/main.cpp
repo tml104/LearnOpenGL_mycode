@@ -26,7 +26,7 @@ const unsigned int SCR_WIDTH = 800;
 const unsigned int SCR_HEIGHT = 600;
 
 // 全局变量2：用于相机系统
-Camera camera(glm::vec3(0.0f, 0.0f, 3.0f));
+Camera camera(glm::vec3(50.0f, 10.0f, 50.0f));
 
 float deltaTime = 0.0f;
 float lastFrame = 0.0f;
@@ -85,70 +85,50 @@ int main()
     // build and compile our shader program
     // ------------------------------------
     
-    Shader instancedQuadShader("./shaders/instancedQuadShader.vs", "./shaders/instancedQuadShader.fs");
+    //Shader instancedQuadShader("./shaders/instancedQuadShader.vs", "./shaders/instancedQuadShader.fs");
+    Shader instancedAsteroidBeltShader("./shaders/instancedAsteroidBeltShader.vs", "./shaders/instancedAsteroidBeltShader.fs");
 
     // load models
-    float quadVertices[] = {
-        // 位置          // 颜色
-        -0.05f,  0.05f,  1.0f, 0.0f, 0.0f,
-         0.05f, -0.05f,  0.0f, 1.0f, 0.0f,
-        -0.05f, -0.05f,  0.0f, 0.0f, 1.0f,
+    Model rock("D:/code/learnopengl_resources/rock/rock.obj");
+    Model planet("D:/code/learnopengl_resources/planet/planet.obj");
 
-        -0.05f,  0.05f,  1.0f, 0.0f, 0.0f,
-         0.05f, -0.05f,  0.0f, 1.0f, 0.0f,
-         0.05f,  0.05f,  0.0f, 1.0f, 1.0f
+    // generate a large list of semi-random model transformation matrices
+    auto generate_model_matrices = [&](unsigned int amount) -> glm::mat4* {
+        glm::mat4* modelMatrices = new glm::mat4[amount];
+
+        srand(static_cast<unsigned int>(glfwGetTime())); // initialize random seed
+        float radius = 50.0;
+        float offset = 2.5f;
+        for (unsigned int i = 0; i < amount; i++)
+        {
+            glm::mat4 model = glm::mat4(1.0f);
+            // 1. translation: displace along circle with 'radius' in range [-offset, offset]
+            float angle = (float)i / (float)amount * 360.0f;
+            float displacement = (rand() % (int)(2 * offset * 100)) / 100.0f - offset;
+            float x = sin(angle) * radius + displacement;
+            displacement = (rand() % (int)(2 * offset * 100)) / 100.0f - offset;
+            float y = displacement * 0.4f; // keep height of asteroid field smaller compared to width of x and z
+            displacement = (rand() % (int)(2 * offset * 100)) / 100.0f - offset;
+            float z = cos(angle) * radius + displacement;
+            model = glm::translate(model, glm::vec3(x, y, z));
+
+            // 2. scale: Scale between 0.05 and 0.25f
+            float scale = static_cast<float>((rand() % 20) / 100.0 + 0.05);
+            model = glm::scale(model, glm::vec3(scale));
+
+            // 3. rotation: add random rotation around a (semi)randomly picked rotation axis vector
+            float rotAngle = static_cast<float>((rand() % 360));
+            model = glm::rotate(model, rotAngle, glm::vec3(0.4f, 0.6f, 0.8f));
+
+            // 4. now add to list of matrices
+            modelMatrices[i] = model;
+        }
+
+        return modelMatrices;
     };
 
-    // -> 生成偏移
-    glm::vec2 translations[100];
-    int translations_index = 0;
-    float translations_offset = 0.1f;
-    for (int y = -10; y < 10; y += 2){
-        for (int x = -10; x < 10; x += 2) {
-            glm::vec2 translation;
-            translation.x = x / 10.0f + translations_offset;
-            translation.y = y / 10.0f + translations_offset;
-            translations[translations_index++] = translation;
-        }
-    }
-
-    // -> store instance data in an array buffer
-    // （和下面模型绑定顶点信息时最大的不同在于，这里就只是单纯地往buffer里面写信息而已）
-    unsigned int instanceVBO;
-    glGenBuffers(1, &instanceVBO);
-    glBindBuffer(GL_ARRAY_BUFFER, instanceVBO);
-    glBufferData(GL_ARRAY_BUFFER, sizeof(glm::vec2) * 100, &translations[0], GL_STATIC_DRAW);
-    glBindBuffer(GL_ARRAY_BUFFER, 0);
-
-    /*
-    *  如果不用上面那段，那就得这么写，但是容易超过uniform变量数量上限
-        shader.setVec2(("offsets[" + index + "]").c_str(), translations[i]);
-    */
-
-    // 四边形顶点VAO
-    unsigned int quadVBO, quadVAO;
-    glGenBuffers(1, &quadVBO);
-    glGenVertexArrays(1, &quadVAO);
-
-    glBindVertexArray(quadVAO);
-    glBindBuffer(GL_ARRAY_BUFFER, quadVBO);
-    glBufferData(GL_ARRAY_BUFFER, sizeof(quadVertices), &quadVertices, GL_STATIC_DRAW);
-
-    // -> 属性：position (vec2)
-    glEnableVertexAttribArray(0);
-    glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 5 * sizeof(float), (void*)0);
-
-    // -> 属性：color (vec2)
-    glEnableVertexAttribArray(1);
-    glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 5 * sizeof(float), (void*)(2 * sizeof(float)));
-
-    // set instance data
-    glEnableVertexAttribArray(2);
-    glBindBuffer(GL_ARRAY_BUFFER, instanceVBO); // this attribute comes from a different vertex buffer （注意这里这个buffer已经有数据了，在这里调用时，因为前面绑定过VAO所以没有问题）
-    glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, 2 * sizeof(float), (void*)0);
-    glBindBuffer(GL_ARRAY_BUFFER, 0);
-    // -> glVertexAttribDivisor参数：（顶点属性编号，更新顶点属性信息的间隔（默认每次更换顶点时就会更新，但是如果设置成1，就会变成每渲染一个实例才更新一次））
-    glVertexAttribDivisor(2, 1); // tell OpenGL this is an instanced vertex attribute. 
+    unsigned int amount = 9000;
+    glm::mat4* modelMatrices = generate_model_matrices(amount);
 
     // render loop
     // -----------
@@ -171,11 +151,26 @@ int main()
         glClearColor(0.2f, 0.3f, 0.3f, 1.0f);
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
-        instancedQuadShader.use();
-        glBindVertexArray(quadVAO);
-        glDrawArraysInstanced(GL_TRIANGLES, 0, 6, 100);  // 注意此处调用的是glDrawArraysInstanced
-        glBindVertexArray(0);
+        // 渲染：中心行星
+        instancedAsteroidBeltShader.use();
 
+        glm::mat4 projection = glm::perspective(glm::radians(camera.Zoom), (float)SCR_WIDTH / (float)SCR_HEIGHT, 0.1f, 500.0f);
+        glm::mat4 view = camera.GetViewMatrix();
+        instancedAsteroidBeltShader.setMatrix4("projection", projection);
+        instancedAsteroidBeltShader.setMatrix4("view", view);
+
+        glm::mat4 model = glm::mat4(1.0f);
+        model = glm::translate(model, glm::vec3(0.0f, -3.0f, 0.0f));
+        model = glm::scale(model, glm::vec3(4.0f, 4.0f, 4.0f));
+        instancedAsteroidBeltShader.setMatrix4("model", model);
+        planet.Draw(instancedAsteroidBeltShader);
+
+        // 渲染：小行星
+        for (unsigned int i = 0; i < amount; i++)
+        {
+            instancedAsteroidBeltShader.setMatrix4("model", modelMatrices[i]);
+            rock.Draw(instancedAsteroidBeltShader);
+        }
 
         // glfw: swap buffers and poll IO events (keys pressed/released, mouse moved etc.)
         // -------------------------------------------------------------------------------
@@ -183,9 +178,7 @@ int main()
         glfwPollEvents();
     }
 
-    glDeleteVertexArrays(1, &quadVAO);
-    glDeleteBuffers(1, &quadVBO);
-
+    delete[] modelMatrices;
     // glfw: terminate, clearing all previously allocated GLFW resources.
     // ------------------------------------------------------------------
     glfwTerminate();
