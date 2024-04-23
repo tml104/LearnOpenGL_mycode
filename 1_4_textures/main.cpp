@@ -87,6 +87,7 @@ int main()
     
     //Shader instancedQuadShader("./shaders/instancedQuadShader.vs", "./shaders/instancedQuadShader.fs");
     Shader instancedAsteroidBeltShader("./shaders/instancedAsteroidBeltShader.vs", "./shaders/instancedAsteroidBeltShader.fs");
+    Shader instancedAsteroidBeltShader2("./shaders/instancedAsteroidBeltShader2.vs", "./shaders/instancedAsteroidBeltShader.fs");
 
     // load models
     Model rock("D:/code/learnopengl_resources/rock/rock.obj");
@@ -127,8 +128,37 @@ int main()
         return modelMatrices;
     };
 
-    unsigned int amount = 9000;
+    unsigned int amount = 90000;
     glm::mat4* modelMatrices = generate_model_matrices(amount);
+
+    // 为4个顶点属性 (layout (location = 3) mat4) 设置属性指针，并将它们设置为实例化数组
+    unsigned int modelMatricesVBO;
+    glGenBuffers(1, &modelMatricesVBO);
+    glBindBuffer(GL_ARRAY_BUFFER, modelMatricesVBO); // 后面那个mesh循环结束之前别解绑
+    glBufferData(GL_ARRAY_BUFFER, amount * sizeof(glm::mat4), &modelMatrices[0], GL_STATIC_DRAW);
+
+    for (unsigned int i = 0; i < rock.meshes.size(); i++)
+    {
+        unsigned int VAO = rock.meshes[i].VAO;
+        glBindVertexArray(VAO);
+        // 顶点属性
+        GLsizei vec4Size = sizeof(glm::vec4);
+        glEnableVertexAttribArray(3);
+        glVertexAttribPointer(3, 4, GL_FLOAT, GL_FALSE, 4 * vec4Size, (void*)0);
+        glEnableVertexAttribArray(4);
+        glVertexAttribPointer(4, 4, GL_FLOAT, GL_FALSE, 4 * vec4Size, (void*)(vec4Size));
+        glEnableVertexAttribArray(5);
+        glVertexAttribPointer(5, 4, GL_FLOAT, GL_FALSE, 4 * vec4Size, (void*)(2 * vec4Size));
+        glEnableVertexAttribArray(6);
+        glVertexAttribPointer(6, 4, GL_FLOAT, GL_FALSE, 4 * vec4Size, (void*)(3 * vec4Size));
+
+        glVertexAttribDivisor(3, 1);
+        glVertexAttribDivisor(4, 1);
+        glVertexAttribDivisor(5, 1);
+        glVertexAttribDivisor(6, 1);
+
+        glBindVertexArray(0);
+    }
 
     // render loop
     // -----------
@@ -166,11 +196,24 @@ int main()
         planet.Draw(instancedAsteroidBeltShader);
 
         // 渲染：小行星
-        for (unsigned int i = 0; i < amount; i++)
+        //for (unsigned int i = 0; i < amount; i++)
+        //{
+        //    instancedAsteroidBeltShader.setMatrix4("model", modelMatrices[i]);
+        //    rock.Draw(instancedAsteroidBeltShader);
+        //}
+
+        instancedAsteroidBeltShader2.use();
+        instancedAsteroidBeltShader2.setMatrix4("projection", projection);
+        instancedAsteroidBeltShader2.setMatrix4("view", view); // 注意：接下来不再手动传入model矩阵了，而是用前面设定的顶点属性3去实现渲染实例时的model矩阵变换
+
+        for (unsigned int i = 0; i < rock.meshes.size(); i++)
         {
-            instancedAsteroidBeltShader.setMatrix4("model", modelMatrices[i]);
-            rock.Draw(instancedAsteroidBeltShader);
+            glBindVertexArray(rock.meshes[i].VAO);
+            // 这里用glDrawElementsInstanced 是因为在 mesh.h 里面的 draw 也是用的 glDrawElements
+            glDrawElementsInstanced(GL_TRIANGLES, rock.meshes[i].indices.size(), GL_UNSIGNED_INT, 0, amount);
         }
+
+
 
         // glfw: swap buffers and poll IO events (keys pressed/released, mouse moved etc.)
         // -------------------------------------------------------------------------------
