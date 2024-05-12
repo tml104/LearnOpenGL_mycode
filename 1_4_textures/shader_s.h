@@ -136,6 +136,7 @@ public:
     }
 
     void setVec2(const std::string& name, const glm::vec2& value) const {
+        // 第二个参数是向量个数，如果想要赋值向量数组，请手动调用glUniform2fv并改变第二个参数（最后一个参数也要变成&value[0][0]）
         glUniform2fv(glGetUniformLocation(ID, name.c_str()), 1, &value[0]);
     }
 
@@ -144,6 +145,7 @@ public:
     }
 
     void setVec3(const std::string& name, const glm::vec3& value) const {
+        // 第二个参数是向量个数，如果想要赋值向量数组，请手动调用glUniform3fv并改变第二个参数
         glUniform3fv(glGetUniformLocation(ID, name.c_str()), 1, &value[0]);
     }
 

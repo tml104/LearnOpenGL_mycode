@@ -18,7 +18,7 @@ void mouse_callback(GLFWwindow* window, double xposIn, double yposIn);
 void scroll_callback(GLFWwindow* window, double xoffset, double yoffset);
 void processInput(GLFWwindow* window);
 
-unsigned int loadTexture(char const* path);
+unsigned int loadTexture(char const* path, bool gammaCorrection);
 unsigned int loadCubemap(vector<std::string> faces);
 
 // settings
@@ -35,12 +35,14 @@ bool firstMouse = true;
 float lastX = SCR_WIDTH / 2.0f;
 float lastY = SCR_HEIGHT / 2.0f;
 
-// lighting
-glm::vec3 lightPos(0.0f, 0.0f, 0.0f);
 
 // 全局变量：切换blinn-phong与普通phong（用两个变量，确保在按下B松开后再次按下才会切换状态）
 bool blinn = false;
 bool blinnKeyPressed = false;
+
+// 全局变量：切换有gamma校正与无gamma校正
+bool gammaEnabled = false;
+bool gammaKeyPressed = false;
 
 int main()
 {
@@ -88,10 +90,12 @@ int main()
     glEnable(GL_BLEND);
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 
+    //glEnable(GL_FRAMEBUFFER_SRGB);
+
     // build and compile our shader program
     // ------------------------------------
     
-    Shader blinnPhongShader("./shaders/5_1_BlinnPhong/blinnPhongShader.vs", "./shaders/5_1_BlinnPhong/blinnPhongShader.fs");
+    Shader gammaCorrectionShader("./shaders/5_2_GammaCorrection/gammaCorrectionShader.vs", "./shaders/5_2_GammaCorrection/gammaCorrectionShader.fs");
 
     // load models
     float planeVertices[] = {
@@ -119,11 +123,27 @@ int main()
     glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, 8 * sizeof(float), (void*)(6 * sizeof(float)));
     glBindVertexArray(0);
 
-    unsigned int floorTexture = loadTexture("D:\\code\\vs\\first_glfw\\1_4_textures\\resources\\wood.png");
+    unsigned int floorTexture = loadTexture("D:\\code\\vs\\first_glfw\\1_4_textures\\resources\\wood.png", false);
+    unsigned int floorTextureGammaCorrected = loadTexture("D:\\code\\vs\\first_glfw\\1_4_textures\\resources\\wood.png", true);
 
     // 指定 shader 中 纹理采样器所指向的纹理单元（前面的纹理默认绑定到纹理单元0上）
-    blinnPhongShader.use();
-    blinnPhongShader.setInt("floorTexture", 0);
+    gammaCorrectionShader.use();
+    gammaCorrectionShader.setInt("floorTexture", 0);
+
+    // lighting info
+    // -------------
+    glm::vec3 lightPositions[] = {
+        glm::vec3(-3.0f, 0.0f, 0.0f),
+        glm::vec3(-1.0f, 0.0f, 0.0f),
+        glm::vec3(1.0f, 0.0f, 0.0f),
+        glm::vec3(3.0f, 0.0f, 0.0f)
+    };
+    glm::vec3 lightColors[] = {
+        glm::vec3(0.25),
+        glm::vec3(0.50),
+        glm::vec3(0.75),
+        glm::vec3(1.00)
+    };
 
     // render loop
     // -----------
@@ -144,21 +164,25 @@ int main()
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
         // 渲染：地板
-        blinnPhongShader.use();
+        gammaCorrectionShader.use();
 
         glm::mat4 projection = glm::perspective(glm::radians(camera.Zoom), (float)SCR_WIDTH / (float)SCR_HEIGHT, 0.1f, 100.0f);
         glm::mat4 view = camera.GetViewMatrix();
         glm::mat4 model = glm::mat4(1.0f);
         model = glm::translate(model, glm::vec3(0.0f, 0.0f, 0.0f));
         model = glm::scale(model, glm::vec3(1.0f, 1.0f, 1.0f));
-        blinnPhongShader.setMatrix4("projection", projection);
-        blinnPhongShader.setMatrix4("view", view);
-        blinnPhongShader.setMatrix4("model", model);
-        blinnPhongShader.setBool("blinn", blinn);
+        gammaCorrectionShader.setMatrix4("projection", projection);
+        gammaCorrectionShader.setMatrix4("view", view);
+        gammaCorrectionShader.setMatrix4("model", model);
+
+        gammaCorrectionShader.setBool("gamma", gammaEnabled);
+        glUniform3fv(glGetUniformLocation(gammaCorrectionShader.ID, "lightPositions"), 4, &lightPositions[0][0]); // 注意这里第二个参数的值是4，最后一个参数的值是&a[0][0]这样的形式
+        glUniform3fv(glGetUniformLocation(gammaCorrectionShader.ID, "lightColors"), 4, &lightColors[0][0]);
+        gammaCorrectionShader.setVec3("viewPos", camera.Position);
 
         glBindVertexArray(planeVAO);
         glActiveTexture(GL_TEXTURE0);
-        glBindTexture(GL_TEXTURE_2D, floorTexture);
+        glBindTexture(GL_TEXTURE_2D, gammaEnabled ? floorTextureGammaCorrected : floorTexture);
         glDrawArrays(GL_TRIANGLES, 0, 6);
 
         // glfw: swap buffers and poll IO events (keys pressed/released, mouse moved etc.)
@@ -209,6 +233,7 @@ void processInput(GLFWwindow* window)
     if (glfwGetKey(window, GLFW_KEY_L) == GLFW_PRESS)
         camera.ProcessMouseMovement(keyboardMovmentSpeed, 0.0f);
 
+    // B: blinn
     if (glfwGetKey(window, GLFW_KEY_B) == GLFW_PRESS && !blinnKeyPressed) {
         blinn = !blinn;
         blinnKeyPressed = true;
@@ -218,6 +243,18 @@ void processInput(GLFWwindow* window)
     }
     if (glfwGetKey(window, GLFW_KEY_B) == GLFW_RELEASE){
         blinnKeyPressed = false;
+    }
+
+    // SPACE: gamma correction
+    if (glfwGetKey(window, GLFW_KEY_SPACE) == GLFW_PRESS && !gammaKeyPressed) {
+        gammaEnabled = !gammaEnabled;
+        gammaKeyPressed = true;
+
+        // [debug] blinn
+        std::cout << "gamma correction: " << gammaEnabled << std::endl;
+    }
+    if (glfwGetKey(window, GLFW_KEY_SPACE) == GLFW_RELEASE) {
+        gammaKeyPressed = false;
     }
 }
 
@@ -256,7 +293,7 @@ void scroll_callback(GLFWwindow* window, double xoffset, double yoffset) {
 // utility function for loading a 2D texture from file
 // 绑定纹理对象与实际数据，并返回纹理对象ID以供随后激活纹理单元并将纹理对象与纹理单元绑定
 // ---------------------------------------------------
-unsigned int loadTexture(char const* path) {
+unsigned int loadTexture(char const* path, bool gammaCorrection) {
     unsigned int textureID;
     glGenTextures(1, &textureID);
 
@@ -264,25 +301,28 @@ unsigned int loadTexture(char const* path) {
     unsigned char* data = stbi_load(path, &width, &height, &nrComponents, 0);
 
     if (data) {
-        GLenum format;
+        GLenum dataFormat;
+        GLenum internalFormat;
         if (nrComponents == 1) {
-            format = GL_RED;
+            internalFormat = dataFormat = GL_RED;
         }
         else if (nrComponents == 3) {
-            format = GL_RGB;
+            internalFormat = gammaCorrection ? GL_SRGB : GL_RGB;
+            dataFormat = GL_RGB;
         }
         else if (nrComponents == 4) {
-            format = GL_RGBA;
+            internalFormat = gammaCorrection ? GL_SRGB_ALPHA : GL_RGBA;
+            dataFormat = GL_RGBA;
         }
 
         // 绑定：绑定纹理对象与实际数据
         glBindTexture(GL_TEXTURE_2D, textureID);
-        glTexImage2D(GL_TEXTURE_2D, 0, format, width, height, 0, format, GL_UNSIGNED_BYTE, data);
+        glTexImage2D(GL_TEXTURE_2D, 0, internalFormat, width, height, 0, dataFormat, GL_UNSIGNED_BYTE, data);
         glGenerateMipmap(GL_TEXTURE_2D);
 
         // 纹理环绕方式（与绑定之间的顺序随意）
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, format == GL_RGBA ? GL_CLAMP_TO_EDGE : GL_REPEAT); // for this tutorial: use GL_CLAMP_TO_EDGE to prevent semi-transparent borders. Due to interpolation it takes texels from next repeat 
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, format == GL_RGBA ? GL_CLAMP_TO_EDGE : GL_REPEAT);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, dataFormat == GL_RGBA ? GL_CLAMP_TO_EDGE : GL_REPEAT); // for this tutorial: use GL_CLAMP_TO_EDGE to prevent semi-transparent borders. Due to interpolation it takes texels from next repeat 
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, dataFormat == GL_RGBA ? GL_CLAMP_TO_EDGE : GL_REPEAT);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
 
