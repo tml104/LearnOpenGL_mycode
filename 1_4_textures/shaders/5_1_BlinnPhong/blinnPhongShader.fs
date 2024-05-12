@@ -38,6 +38,6 @@ void main()
         // FragColor = vec4(1.0, 1.0, 1.0, 1.0);
         // return ;
     }
-    vec3 specular = spec * vec3(0.3) * color; // assuming bright white light color
+    vec3 specular = spec * vec3(0.3) *   color; // assuming bright white light color
     FragColor = vec4(ambient + diffuse + specular, 1.0);
 }

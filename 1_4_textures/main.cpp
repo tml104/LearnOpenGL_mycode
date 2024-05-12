@@ -155,6 +155,7 @@ int main()
         blinnPhongShader.setMatrix4("view", view);
         blinnPhongShader.setMatrix4("model", model);
         blinnPhongShader.setBool("blinn", blinn);
+        blinnPhongShader.setVec3("viewPos", camera.Position);
 
         glBindVertexArray(planeVAO);
         glActiveTexture(GL_TEXTURE0);
