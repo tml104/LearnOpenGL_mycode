@@ -39,7 +39,7 @@ const unsigned int SCR_WIDTH = 800;
 const unsigned int SCR_HEIGHT = 600;
 
 // 全局变量2：用于相机系统
-Camera camera(glm::vec3(10.0f, 10.0f, 10.0f));
+Camera camera(glm::vec3(-2.0f, 4.0f, -1.0f));
 
 float deltaTime = 0.0f;
 float lastFrame = 0.0f;
@@ -99,6 +99,7 @@ int main()
 
     // configure global opengl state
     // -----------------------------
+    glEnable(GL_CULL_FACE);
     glEnable(GL_DEPTH_TEST);
     glEnable(GL_BLEND);
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
@@ -110,6 +111,7 @@ int main()
     
     Shader simpleDepthShader("./shaders/5_3_ShadowMapping/shadowMappingDepthShader.vs", "./shaders/5_3_ShadowMapping/shadowMappingDepthShader.fs");
     Shader debugQuadShader("./shaders/5_3_ShadowMapping/debugQuadShader.vs", "./shaders/5_3_ShadowMapping/debugQuadShader.fs");
+    Shader blinnPhongShadowShader("./shaders/5_3_ShadowMapping/blinnPhongShadowShader.vs", "./shaders/5_3_ShadowMapping/blinnPhongShadowShader.fs");
 
     // load models & textures
     setPlaneVAO();
@@ -129,8 +131,10 @@ int main()
     glTexImage2D(GL_TEXTURE_2D, 0, GL_DEPTH_COMPONENT, SHADOW_WIDTH, SHADOW_HEIGHT, 0, GL_DEPTH_COMPONENT, GL_FLOAT, NULL); // 注意类型：GL_DEPTH_COMPONENT表明一会渲染时会自动写入深度数据
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_BORDER);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_BORDER);
+    GLfloat borderColor[] = { 1.0, 1.0, 1.0, 1.0 };
+    glTexParameterfv(GL_TEXTURE_2D, GL_TEXTURE_BORDER_COLOR, borderColor);
 
     // -> attach depth texture to FBO
     glBindFramebuffer(GL_FRAMEBUFFER, depthMapFBO);
@@ -144,6 +148,10 @@ int main()
     // 指定 shader 中 纹理采样器所指向的纹理单元（前面的纹理默认绑定到纹理单元0上）
     debugQuadShader.use();
     debugQuadShader.setInt("depthMap", 0);
+
+    blinnPhongShadowShader.use();
+    blinnPhongShadowShader.setInt("depthMap", 0);
+    blinnPhongShadowShader.setInt("floorTexture", 1);
 
     // lighting info
     // -------------
@@ -167,10 +175,10 @@ int main()
         glClearColor(0.2f, 0.3f, 0.3f, 1.0f);
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
-        // 渲染：从光源看过去
+        // 渲染：从光源看过去的场景
         glm::mat4 lightProjection, lightView;
         glm::mat4 lightSpaceMatrix;
-        float near_plane = 1.0f, far_plane = 7.5f;
+        float near_plane = 1.0f, far_plane = 10.5f;
         lightProjection = glm::ortho(-10.0f, 10.0f, -10.0f, 10.0f, near_plane, far_plane);
         lightView = glm::lookAt(lightPos, glm::vec3(0.0f), glm::vec3(0.0, 1.0, 0.0));
         lightSpaceMatrix = lightProjection * lightView;
@@ -182,22 +190,41 @@ int main()
         glBindFramebuffer(GL_FRAMEBUFFER, depthMapFBO);
         glClear(GL_DEPTH_BUFFER_BIT); // 注意清空GL_DEPTH_BUFFER_BIT
         //glActiveTexture(GL_TEXTURE0);
-        //glBindTexture(GL_TEXTURE_2D, woodTexture);
+        //glBindTexture(GL_TEXTURE_2D, woodTexture); // 这个着色器没用到
+        glCullFace(GL_FRONT);
         renderScene(simpleDepthShader);
+        glCullFace(GL_BACK);
         glBindFramebuffer(GL_FRAMEBUFFER, 0);
 
         // 渲染：debugQuad
         glViewport(0, 0, SCR_WIDTH, SCR_HEIGHT);
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
-        debugQuadShader.use();
-        debugQuadShader.setFloat("near_plane", near_plane);
-        debugQuadShader.setFloat("far_plane", far_plane);
+        //debugQuadShader.use();
+        //debugQuadShader.setFloat("near_plane", near_plane);
+        //debugQuadShader.setFloat("far_plane", far_plane);
+        //glActiveTexture(GL_TEXTURE0);
+        //glBindTexture(GL_TEXTURE_2D, depthMap);
+        //renderQuad();
+
+        // 渲染：场景（地板和箱子）
+
+        glm::mat4 cameraProjection = glm::perspective(glm::radians(camera.Zoom), (float)SCR_WIDTH / (float)SCR_HEIGHT, 0.1f, 500.0f);
+        glm::mat4 view = camera.GetViewMatrix();
+
+        blinnPhongShadowShader.use();
+        blinnPhongShadowShader.setMatrix4("projection", cameraProjection);
+        blinnPhongShadowShader.setMatrix4("view", view);
+        blinnPhongShadowShader.setMatrix4("lightSpaceMatrix", lightSpaceMatrix);
+
+        blinnPhongShadowShader.setVec3("viewPos", camera.Position);
+        blinnPhongShadowShader.setVec3("lightPos", lightPos);
+
         glActiveTexture(GL_TEXTURE0);
         glBindTexture(GL_TEXTURE_2D, depthMap);
-        renderQuad();
-
-
+        glActiveTexture(GL_TEXTURE1);
+        glBindTexture(GL_TEXTURE_2D, woodTexture);
+        renderScene(blinnPhongShadowShader);
 
         // glfw: swap buffers and poll IO events (keys pressed/released, mouse moved etc.)
         // -------------------------------------------------------------------------------
@@ -214,14 +241,14 @@ int main()
 unsigned int setPlaneVAO()
 {
     static float planeVertices[] = {
-        // positions            // normals         // texcoords
-         25.0f, -0.5f,  25.0f,  0.0f, 1.0f, 0.0f,  25.0f,  0.0f,
-        -25.0f, -0.5f,  25.0f,  0.0f, 1.0f, 0.0f,   0.0f,  0.0f,
-        -25.0f, -0.5f, -25.0f,  0.0f, 1.0f, 0.0f,   0.0f, 25.0f,
+        // Positions          // Normals         // Texture Coords
+        25.0f, -0.5f, 25.0f, 0.0f, 1.0f, 0.0f, 25.0f, 0.0f,
+        -25.0f, -0.5f, -25.0f, 0.0f, 1.0f, 0.0f, 0.0f, 25.0f,
+        -25.0f, -0.5f, 25.0f, 0.0f, 1.0f, 0.0f, 0.0f, 0.0f,
 
-         25.0f, -0.5f,  25.0f,  0.0f, 1.0f, 0.0f,  25.0f,  0.0f,
-        -25.0f, -0.5f, -25.0f,  0.0f, 1.0f, 0.0f,   0.0f, 25.0f,
-         25.0f, -0.5f, -25.0f,  0.0f, 1.0f, 0.0f,  25.0f, 25.0f
+        25.0f, -0.5f, 25.0f, 0.0f, 1.0f, 0.0f, 25.0f, 0.0f,
+        25.0f, -0.5f, -25.0f, 0.0f, 1.0f, 0.0f, 25.0f, 25.0f,
+        -25.0f, -0.5f, -25.0f, 0.0f, 1.0f, 0.0f, 0.0f, 25.0f
     };
     // plane VAO
     glGenVertexArrays(1, &planeVAO);
