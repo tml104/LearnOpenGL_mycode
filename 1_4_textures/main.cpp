@@ -35,11 +35,11 @@ void renderCube();
 void renderQuad();
 
 // settings
-const unsigned int SCR_WIDTH = 800;
-const unsigned int SCR_HEIGHT = 600;
+const unsigned int SCR_WIDTH = 1920;
+const unsigned int SCR_HEIGHT = 1080;
 
 // 全局变量2：用于相机系统
-Camera camera(glm::vec3(-2.0f, 4.0f, -1.0f));
+Camera camera(glm::vec3(0.0f, 0.0f, 0.0f));
 
 float deltaTime = 0.0f;
 float lastFrame = 0.0f;
@@ -49,13 +49,19 @@ float lastX = SCR_WIDTH / 2.0f;
 float lastY = SCR_HEIGHT / 2.0f;
 
 
-// 全局变量：切换blinn-phong与普通phong（用两个变量，确保在按下B松开后再次按下才会切换状态）
-bool blinn = false;
-bool blinnKeyPressed = false;
+// 全局变量：切换blinn-phong与普通phong（用两个变量，确保在按下B松开后再次按下才会切换状态） (B)
+//bool blinn = false;
+//bool blinnKeyPressed = false;
 
-// 全局变量：切换有gamma校正与无gamma校正
-bool gammaEnabled = false;
-bool gammaKeyPressed = false;
+// 全局变量：切换有gamma校正与无gamma校正 (Space)
+//bool gammaEnabled = false;
+//bool gammaKeyPressed = false;
+
+// 全局变量：切换有Shadows与无Shadows校正 (Space)
+bool shadowsEnabled = true;
+bool shadowsKeyPressed = false;
+
+//
 
 int main()
 {
@@ -99,6 +105,7 @@ int main()
 
     // configure global opengl state
     // -----------------------------
+     
     glEnable(GL_CULL_FACE);
     glEnable(GL_DEPTH_TEST);
     glEnable(GL_BLEND);
@@ -108,54 +115,49 @@ int main()
 
     // build and compile our shader program
     // ------------------------------------
-    
-    Shader simpleDepthShader("./shaders/5_3_ShadowMapping/shadowMappingDepthShader.vs", "./shaders/5_3_ShadowMapping/shadowMappingDepthShader.fs");
-    Shader debugQuadShader("./shaders/5_3_ShadowMapping/debugQuadShader.vs", "./shaders/5_3_ShadowMapping/debugQuadShader.fs");
-    Shader blinnPhongShadowShader("./shaders/5_3_ShadowMapping/blinnPhongShadowShader.vs", "./shaders/5_3_ShadowMapping/blinnPhongShadowShader.fs");
+
+    Shader cubeDepthShader("./shaders/5_4_PointShadows/cubeDepthShader.vs", "./shaders/5_4_PointShadows/cubeDepthShader.fs", "./shaders/5_4_PointShadows/cubeDepthShader.gs");
+    Shader blinnPhongShadowShader("./shaders/5_4_PointShadows/blinnPhongShadowShader.vs", "./shaders/5_4_PointShadows/blinnPhongShadowShader.fs");
 
     // load models & textures
-    setPlaneVAO();
     setCubeVAO();
-    setQuadVAO();
 
     unsigned int woodTexture = loadTexture("D:\\code\\vs\\first_glfw\\1_4_textures\\resources\\wood.png", false);
 
     // create depth texture & framebuffer
-    const unsigned int SHADOW_WIDTH = 1024, SHADOW_HEIGHT = 1024;
-    unsigned int depthMapFBO;
+    const GLuint SHADOW_WIDTH = 1024, SHADOW_HEIGHT = 1024; // 注意：宽高必须相等
+    GLuint depthMapFBO;
     glGenFramebuffers(1, &depthMapFBO);
 
-    unsigned int depthMap;
-    glGenTextures(1, &depthMap);
-    glBindTexture(GL_TEXTURE_2D, depthMap);
-    glTexImage2D(GL_TEXTURE_2D, 0, GL_DEPTH_COMPONENT, SHADOW_WIDTH, SHADOW_HEIGHT, 0, GL_DEPTH_COMPONENT, GL_FLOAT, NULL); // 注意类型：GL_DEPTH_COMPONENT表明一会渲染时会自动写入深度数据
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_BORDER);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_BORDER);
-    GLfloat borderColor[] = { 1.0, 1.0, 1.0, 1.0 };
-    glTexParameterfv(GL_TEXTURE_2D, GL_TEXTURE_BORDER_COLOR, borderColor);
+    GLuint depthCubemap;
+    glGenTextures(1, &depthCubemap);
+    glBindTexture(GL_TEXTURE_CUBE_MAP, depthCubemap);
+    for (int i = 0; i < 6; i++) {
+        glTexImage2D(GL_TEXTURE_CUBE_MAP_POSITIVE_X + i, 0, GL_DEPTH_COMPONENT, SHADOW_WIDTH, SHADOW_HEIGHT, 0, GL_DEPTH_COMPONENT, GL_FLOAT, NULL);
+    }
+    glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+    glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+    glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_WRAP_R, GL_CLAMP_TO_EDGE);
 
-    // -> attach depth texture to FBO
     glBindFramebuffer(GL_FRAMEBUFFER, depthMapFBO);
-    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_TEXTURE_2D, depthMap, 0);
-    glDrawBuffer(GL_NONE); // 注意禁用读写颜色缓冲，否则framebuffer不完整
+    glFramebufferTexture(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, depthCubemap, 0);
+    glDrawBuffer(GL_NONE); // 注意：禁用读写颜色缓冲，否则framebuffer不完整
     glReadBuffer(GL_NONE);
     if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE)
         std::cout << "ERROR::FRAMEBUFFER:: Framebuffer is not complete!" << std::endl;
     glBindFramebuffer(GL_FRAMEBUFFER, 0);
 
-    // 指定 shader 中 纹理采样器所指向的纹理单元（前面的纹理默认绑定到纹理单元0上）
-    debugQuadShader.use();
-    debugQuadShader.setInt("depthMap", 0);
+    // lighting info
+    // -------------
+    glm::vec3 lightPos{ 0.0f, 0.0f, 0.0f };
 
+
+    // 指定 shader 中 纹理采样器所指向的纹理单元（前面的纹理默认绑定到纹理单元0上）
     blinnPhongShadowShader.use();
     blinnPhongShadowShader.setInt("depthMap", 0);
     blinnPhongShadowShader.setInt("floorTexture", 1);
-
-    // lighting info
-    // -------------
-    glm::vec3 lightPos{ -2.0f, 4.0f, -1.0f };
 
     // render loop
     // -----------
@@ -173,56 +175,82 @@ int main()
         // render
         // ------
         glClearColor(0.2f, 0.3f, 0.3f, 1.0f);
-        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
-        // 渲染：从光源看过去的场景
-        glm::mat4 lightProjection, lightView;
-        glm::mat4 lightSpaceMatrix;
-        float near_plane = 1.0f, far_plane = 10.5f;
-        lightProjection = glm::ortho(-10.0f, 10.0f, -10.0f, 10.0f, near_plane, far_plane);
-        lightView = glm::lookAt(lightPos, glm::vec3(0.0f), glm::vec3(0.0, 1.0, 0.0));
-        lightSpaceMatrix = lightProjection * lightView;
-        // render scene from light's point of view
-        simpleDepthShader.use();
-        simpleDepthShader.setMatrix4("lightSpaceMatrix", lightSpaceMatrix);
+        // change light position 
+        lightPos.z = sin(glfwGetTime() * 0.5) * 3.0;
 
-        glViewport(0, 0, SHADOW_WIDTH, SHADOW_HEIGHT); // 注意视口调节！
+            // Create depth cubemap transformation matrices
+        const GLfloat lightSourceAspect = static_cast<GLfloat>(SHADOW_WIDTH) / static_cast<GLfloat>(SHADOW_HEIGHT);
+        const GLfloat lightSourceNearPlane = 1.0f;
+        const GLfloat lightSourceFarPlane = 25.0f;
+        glm::mat4 lightProjection = glm::perspective(glm::radians(90.0f), lightSourceAspect, lightSourceNearPlane, lightSourceFarPlane);
+
+        glm::mat4 lightSourceView;
+        std::vector<glm::mat4> shadowTransforms;
+
+        lightSourceView = glm::lookAt(lightPos, lightPos + glm::vec3(1.0f, 0.0f, 0.0f), glm::vec3(0.0f, -1.0f, 0.0f));
+        shadowTransforms.emplace_back(lightProjection * lightSourceView);
+
+        lightSourceView = glm::lookAt(lightPos, lightPos + glm::vec3(-1.0f, 0.0f, 0.0f), glm::vec3(0.0f, -1.0f, 0.0f));
+        shadowTransforms.emplace_back(lightProjection * lightSourceView);
+
+        lightSourceView = glm::lookAt(lightPos, lightPos + glm::vec3(0.0f, 1.0f, 0.0f), glm::vec3(0.0f, 0.0f, 1.0f));
+        shadowTransforms.emplace_back(lightProjection * lightSourceView);
+
+        lightSourceView = glm::lookAt(lightPos, lightPos + glm::vec3(0.0f, -1.0f, 0.0f), glm::vec3(0.0f, 0.0f, -1.0f));
+        shadowTransforms.emplace_back(lightProjection * lightSourceView);
+
+        lightSourceView = glm::lookAt(lightPos, lightPos + glm::vec3(0.0f, 0.0f, 1.0f), glm::vec3(0.0f, -1.0f, 0.0f));
+        shadowTransforms.emplace_back(lightProjection * lightSourceView);
+
+        lightSourceView = glm::lookAt(lightPos, lightPos + glm::vec3(0.0f, 0.0f, -1.0f), glm::vec3(0.0f, -1.0f, 0.0f));
+        shadowTransforms.emplace_back(lightProjection * lightSourceView);
+
+        //glm::mat4 shadowTransforms2[] = {
+        //    shadowTransforms[0],
+        //    shadowTransforms[1],
+        //    shadowTransforms[2],
+        //    shadowTransforms[3],
+        //    shadowTransforms[4],
+        //    shadowTransforms[5]
+        //};
+
+        // shader uniform变量
+        cubeDepthShader.use();
+        //cubeDepthShader.setVec3("lightPos", lightPos);
+        cubeDepthShader.setFloat("far_plane", lightSourceFarPlane);
+        //for (int i = 0; i < 6; i++) {
+        //    cubeDepthShader.setMatrix4(std::string("shadowMatrices[") + std::to_string(i) + std::string("]"), shadowTransforms[i]);
+        //}
+        //cubeDepthShader.setMatrix4Array("shadowMatrices", 6, shadowTransforms2);
+        cubeDepthShader.setMatrix4Array("shadowMatrices", 6, &shadowTransforms.front()); // 只能这么写……
+
+        // 渲染：从光源看过去的场景（Cube Map）
+        glViewport(0, 0, SHADOW_WIDTH, SHADOW_HEIGHT);
         glBindFramebuffer(GL_FRAMEBUFFER, depthMapFBO);
-        glClear(GL_DEPTH_BUFFER_BIT); // 注意清空GL_DEPTH_BUFFER_BIT
-        //glActiveTexture(GL_TEXTURE0);
-        //glBindTexture(GL_TEXTURE_2D, woodTexture); // 这个着色器没用到
-        glCullFace(GL_FRONT);
-        renderScene(simpleDepthShader);
-        glCullFace(GL_BACK);
+        glClear(GL_DEPTH_BUFFER_BIT);
+        cubeDepthShader.use();
+        cubeDepthShader.setVec3("lightPos", lightPos);
+        renderScene(cubeDepthShader);
         glBindFramebuffer(GL_FRAMEBUFFER, 0);
 
-        // 渲染：debugQuad
+        // 渲染：场景（箱子）
         glViewport(0, 0, SCR_WIDTH, SCR_HEIGHT);
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-
-        //debugQuadShader.use();
-        //debugQuadShader.setFloat("near_plane", near_plane);
-        //debugQuadShader.setFloat("far_plane", far_plane);
-        //glActiveTexture(GL_TEXTURE0);
-        //glBindTexture(GL_TEXTURE_2D, depthMap);
-        //renderQuad();
-
-        // 渲染：场景（地板和箱子）
-
-        glm::mat4 cameraProjection = glm::perspective(glm::radians(camera.Zoom), (float)SCR_WIDTH / (float)SCR_HEIGHT, 0.1f, 500.0f);
-        glm::mat4 view = camera.GetViewMatrix();
-
         blinnPhongShadowShader.use();
+        glm::mat4 cameraProjection = glm::perspective(glm::radians(camera.Zoom), (float)SCR_WIDTH / (float)SCR_HEIGHT, 0.1f, 100.0f);
+        glm::mat4 cameraView = camera.GetViewMatrix();
         blinnPhongShadowShader.setMatrix4("projection", cameraProjection);
-        blinnPhongShadowShader.setMatrix4("view", view);
-        blinnPhongShadowShader.setMatrix4("lightSpaceMatrix", lightSpaceMatrix);
-
-        blinnPhongShadowShader.setVec3("viewPos", camera.Position);
+        blinnPhongShadowShader.setMatrix4("view", cameraView);
         blinnPhongShadowShader.setVec3("lightPos", lightPos);
+        blinnPhongShadowShader.setVec3("viewPos", camera.Position);
 
-        glActiveTexture(GL_TEXTURE0);
-        glBindTexture(GL_TEXTURE_2D, depthMap);
-        glActiveTexture(GL_TEXTURE1);
+        blinnPhongShadowShader.setBool("shadows", shadowsEnabled);
+        blinnPhongShadowShader.setFloat("far_plane", lightSourceFarPlane);
+
+        glActiveTexture(GL_TEXTURE0);// depthMap
+        glBindTexture(GL_TEXTURE_CUBE_MAP, depthCubemap);
+        glActiveTexture(GL_TEXTURE1);// floorTexture
         glBindTexture(GL_TEXTURE_2D, woodTexture);
         renderScene(blinnPhongShadowShader);
 
@@ -274,48 +302,48 @@ unsigned int setPlaneVAO()
 unsigned int setCubeVAO()
 {
     static float vertices[] = {
-        // back face
-        -1.0f, -1.0f, -1.0f,  0.0f,  0.0f, -1.0f, 0.0f, 0.0f, // bottom-left
-         1.0f,  1.0f, -1.0f,  0.0f,  0.0f, -1.0f, 1.0f, 1.0f, // top-right
-         1.0f, -1.0f, -1.0f,  0.0f,  0.0f, -1.0f, 1.0f, 0.0f, // bottom-right         
-         1.0f,  1.0f, -1.0f,  0.0f,  0.0f, -1.0f, 1.0f, 1.0f, // top-right
-        -1.0f, -1.0f, -1.0f,  0.0f,  0.0f, -1.0f, 0.0f, 0.0f, // bottom-left
-        -1.0f,  1.0f, -1.0f,  0.0f,  0.0f, -1.0f, 0.0f, 1.0f, // top-left
-        // front face
-        -1.0f, -1.0f,  1.0f,  0.0f,  0.0f,  1.0f, 0.0f, 0.0f, // bottom-left
-         1.0f, -1.0f,  1.0f,  0.0f,  0.0f,  1.0f, 1.0f, 0.0f, // bottom-right
-         1.0f,  1.0f,  1.0f,  0.0f,  0.0f,  1.0f, 1.0f, 1.0f, // top-right
-         1.0f,  1.0f,  1.0f,  0.0f,  0.0f,  1.0f, 1.0f, 1.0f, // top-right
-        -1.0f,  1.0f,  1.0f,  0.0f,  0.0f,  1.0f, 0.0f, 1.0f, // top-left
-        -1.0f, -1.0f,  1.0f,  0.0f,  0.0f,  1.0f, 0.0f, 0.0f, // bottom-left
-        // left face
-        -1.0f,  1.0f,  1.0f, -1.0f,  0.0f,  0.0f, 1.0f, 0.0f, // top-right
-        -1.0f,  1.0f, -1.0f, -1.0f,  0.0f,  0.0f, 1.0f, 1.0f, // top-left
-        -1.0f, -1.0f, -1.0f, -1.0f,  0.0f,  0.0f, 0.0f, 1.0f, // bottom-left
-        -1.0f, -1.0f, -1.0f, -1.0f,  0.0f,  0.0f, 0.0f, 1.0f, // bottom-left
-        -1.0f, -1.0f,  1.0f, -1.0f,  0.0f,  0.0f, 0.0f, 0.0f, // bottom-right
-        -1.0f,  1.0f,  1.0f, -1.0f,  0.0f,  0.0f, 1.0f, 0.0f, // top-right
-        // right face
-         1.0f,  1.0f,  1.0f,  1.0f,  0.0f,  0.0f, 1.0f, 0.0f, // top-left
-         1.0f, -1.0f, -1.0f,  1.0f,  0.0f,  0.0f, 0.0f, 1.0f, // bottom-right
-         1.0f,  1.0f, -1.0f,  1.0f,  0.0f,  0.0f, 1.0f, 1.0f, // top-right         
-         1.0f, -1.0f, -1.0f,  1.0f,  0.0f,  0.0f, 0.0f, 1.0f, // bottom-right
-         1.0f,  1.0f,  1.0f,  1.0f,  0.0f,  0.0f, 1.0f, 0.0f, // top-left
-         1.0f, -1.0f,  1.0f,  1.0f,  0.0f,  0.0f, 0.0f, 0.0f, // bottom-left     
-        // bottom face
-        -1.0f, -1.0f, -1.0f,  0.0f, -1.0f,  0.0f, 0.0f, 1.0f, // top-right
-         1.0f, -1.0f, -1.0f,  0.0f, -1.0f,  0.0f, 1.0f, 1.0f, // top-left
-         1.0f, -1.0f,  1.0f,  0.0f, -1.0f,  0.0f, 1.0f, 0.0f, // bottom-left
-         1.0f, -1.0f,  1.0f,  0.0f, -1.0f,  0.0f, 1.0f, 0.0f, // bottom-left
-        -1.0f, -1.0f,  1.0f,  0.0f, -1.0f,  0.0f, 0.0f, 0.0f, // bottom-right
-        -1.0f, -1.0f, -1.0f,  0.0f, -1.0f,  0.0f, 0.0f, 1.0f, // top-right
-        // top face
-        -1.0f,  1.0f, -1.0f,  0.0f,  1.0f,  0.0f, 0.0f, 1.0f, // top-left
-         1.0f,  1.0f , 1.0f,  0.0f,  1.0f,  0.0f, 1.0f, 0.0f, // bottom-right
-         1.0f,  1.0f, -1.0f,  0.0f,  1.0f,  0.0f, 1.0f, 1.0f, // top-right     
-         1.0f,  1.0f,  1.0f,  0.0f,  1.0f,  0.0f, 1.0f, 0.0f, // bottom-right
-        -1.0f,  1.0f, -1.0f,  0.0f,  1.0f,  0.0f, 0.0f, 1.0f, // top-left
-        -1.0f,  1.0f,  1.0f,  0.0f,  1.0f,  0.0f, 0.0f, 0.0f  // bottom-left        
+        // Back face
+        -0.5f, -0.5f, -0.5f, 0.0f, 0.0f, -1.0f, 0.0f, 0.0f, // Bottom-left
+        0.5f, 0.5f, -0.5f, 0.0f, 0.0f, -1.0f, 1.0f, 1.0f, // top-right
+        0.5f, -0.5f, -0.5f, 0.0f, 0.0f, -1.0f, 1.0f, 0.0f, // bottom-right         
+        0.5f, 0.5f, -0.5f, 0.0f, 0.0f, -1.0f, 1.0f, 1.0f,  // top-right
+        -0.5f, -0.5f, -0.5f, 0.0f, 0.0f, -1.0f, 0.0f, 0.0f,  // bottom-left
+        -0.5f, 0.5f, -0.5f, 0.0f, 0.0f, -1.0f, 0.0f, 1.0f,// top-left
+        // Front face
+        -0.5f, -0.5f, 0.5f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f, // bottom-left
+        0.5f, -0.5f, 0.5f, 0.0f, 0.0f, 1.0f, 1.0f, 0.0f,  // bottom-right
+        0.5f, 0.5f, 0.5f, 0.0f, 0.0f, 1.0f, 1.0f, 1.0f,  // top-right
+        0.5f, 0.5f, 0.5f, 0.0f, 0.0f, 1.0f, 1.0f, 1.0f, // top-right
+        -0.5f, 0.5f, 0.5f, 0.0f, 0.0f, 1.0f, 0.0f, 1.0f,  // top-left
+        -0.5f, -0.5f, 0.5f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f,  // bottom-left
+        // Left face
+        -0.5f, 0.5f, 0.5f, -1.0f, 0.0f, 0.0f, 1.0f, 0.0f, // top-right
+        -0.5f, 0.5f, -0.5f, -1.0f, 0.0f, 0.0f, 1.0f, 1.0f, // top-left
+        -0.5f, -0.5f, -0.5f, -1.0f, 0.0f, 0.0f, 0.0f, 1.0f,  // bottom-left
+        -0.5f, -0.5f, -0.5f, -1.0f, 0.0f, 0.0f, 0.0f, 1.0f, // bottom-left
+        -0.5f, -0.5f, 0.5f, -1.0f, 0.0f, 0.0f, 0.0f, 0.0f,  // bottom-right
+        -0.5f, 0.5f, 0.5f, -1.0f, 0.0f, 0.0f, 1.0f, 0.0f, // top-right
+        // Right face
+        0.5f, 0.5f, 0.5f, 1.0f, 0.0f, 0.0f, 1.0f, 0.0f, // top-left
+        0.5f, -0.5f, -0.5f, 1.0f, 0.0f, 0.0f, 0.0f, 1.0f, // bottom-right
+        0.5f, 0.5f, -0.5f, 1.0f, 0.0f, 0.0f, 1.0f, 1.0f, // top-right         
+        0.5f, -0.5f, -0.5f, 1.0f, 0.0f, 0.0f, 0.0f, 1.0f,  // bottom-right
+        0.5f, 0.5f, 0.5f, 1.0f, 0.0f, 0.0f, 1.0f, 0.0f,  // top-left
+        0.5f, -0.5f, 0.5f, 1.0f, 0.0f, 0.0f, 0.0f, 0.0f, // bottom-left     
+        // Bottom face
+        -0.5f, -0.5f, -0.5f, 0.0f, -1.0f, 0.0f, 0.0f, 1.0f, // top-right
+        0.5f, -0.5f, -0.5f, 0.0f, -1.0f, 0.0f, 1.0f, 1.0f, // top-left
+        0.5f, -0.5f, 0.5f, 0.0f, -1.0f, 0.0f, 1.0f, 0.0f,// bottom-left
+        0.5f, -0.5f, 0.5f, 0.0f, -1.0f, 0.0f, 1.0f, 0.0f, // bottom-left
+        -0.5f, -0.5f, 0.5f, 0.0f, -1.0f, 0.0f, 0.0f, 0.0f, // bottom-right
+        -0.5f, -0.5f, -0.5f, 0.0f, -1.0f, 0.0f, 0.0f, 1.0f, // top-right
+        // Top face
+        -0.5f, 0.5f, -0.5f, 0.0f, 1.0f, 0.0f, 0.0f, 1.0f,// top-left
+        0.5f, 0.5f, 0.5f, 0.0f, 1.0f, 0.0f, 1.0f, 0.0f, // bottom-right
+        0.5f, 0.5f, -0.5f, 0.0f, 1.0f, 0.0f, 1.0f, 1.0f, // top-right     
+        0.5f, 0.5f, 0.5f, 0.0f, 1.0f, 0.0f, 1.0f, 0.0f, // bottom-right
+        -0.5f, 0.5f, -0.5f, 0.0f, 1.0f, 0.0f, 0.0f, 1.0f,// top-left
+        -0.5f, 0.5f, 0.5f, 0.0f, 1.0f, 0.0f, 0.0f, 0.0f // bottom-left        
     };
 
     glGenVertexArrays(1, &cubeVAO);
@@ -368,26 +396,42 @@ unsigned int setQuadVAO()
 
 void renderScene(const Shader& shader)
 {
-    // floor
-    glm::mat4 model = glm::mat4(1.0f);
+    // Room cube
+    glm::mat4 model{1.0f};
+    model = glm::scale(model, glm::vec3(10.0)); // 放大10倍
     shader.setMatrix4("model", model);
-    glBindVertexArray(planeVAO);
-    glDrawArrays(GL_TRIANGLES, 0, 6);
-    // cubes
-    model = glm::mat4(1.0f);
-    model = glm::translate(model, glm::vec3(0.0f, 1.5f, 0.0));
-    model = glm::scale(model, glm::vec3(0.5f));
+    glDisable(GL_CULL_FACE);
+    shader.setBool("reverse_normals", true);
+    renderCube();
+    shader.setBool("reverse_normals", false);
+    glEnable(GL_CULL_FACE);
+
+    // Cubes
+    model = glm::mat4{ 1.0f };
+    model = glm::translate(model, glm::vec3(4.0f, -3.5f, 0.0));
     shader.setMatrix4("model", model);
     renderCube();
-    model = glm::mat4(1.0f);
-    model = glm::translate(model, glm::vec3(2.0f, 0.0f, 1.0));
-    model = glm::scale(model, glm::vec3(0.5f));
+
+    model = glm::mat4{ 1.0f };
+    model = glm::translate(model, glm::vec3(2.0f, 3.0f, 1.0));
+    model = glm::scale(model, glm::vec3(1.5));
     shader.setMatrix4("model", model);
     renderCube();
-    model = glm::mat4(1.0f);
-    model = glm::translate(model, glm::vec3(-1.0f, 0.0f, 2.0));
-    model = glm::rotate(model, glm::radians(60.0f), glm::normalize(glm::vec3(1.0, 0.0, 1.0)));
-    model = glm::scale(model, glm::vec3(0.25));
+
+    model = glm::mat4{ 1.0f };
+    model = glm::translate(model, glm::vec3(-3.0f, -1.0f, 0.0));
+    shader.setMatrix4("model", model);
+    renderCube();
+
+    model = glm::mat4{ 1.0f };
+    model = glm::translate(model, glm::vec3(-1.5f, 1.0f, 1.5));
+    shader.setMatrix4("model", model);
+    renderCube();
+
+    model = glm::mat4{ 1.0f };
+    model = glm::translate(model, glm::vec3(-1.5f, 2.0f, -3.0));
+    model = glm::rotate(model, 60.0f, glm::normalize(glm::vec3(1.0, 0.0, 1.0)));
+    model = glm::scale(model, glm::vec3(1.5));
     shader.setMatrix4("model", model);
     renderCube();
 }
@@ -443,28 +487,16 @@ void processInput(GLFWwindow* window)
     if (glfwGetKey(window, GLFW_KEY_L) == GLFW_PRESS)
         camera.ProcessMouseMovement(keyboardMovmentSpeed, 0.0f);
 
-    // B: blinn
-    if (glfwGetKey(window, GLFW_KEY_B) == GLFW_PRESS && !blinnKeyPressed) {
-        blinn = !blinn;
-        blinnKeyPressed = true;
-
-        // [debug] blinn
-        std::cout << "blinn: " << blinn << std::endl;
-    }
-    if (glfwGetKey(window, GLFW_KEY_B) == GLFW_RELEASE){
-        blinnKeyPressed = false;
-    }
-
     // SPACE: gamma correction
-    if (glfwGetKey(window, GLFW_KEY_SPACE) == GLFW_PRESS && !gammaKeyPressed) {
-        gammaEnabled = !gammaEnabled;
-        gammaKeyPressed = true;
+    if (glfwGetKey(window, GLFW_KEY_SPACE) == GLFW_PRESS && !shadowsKeyPressed) {
+        shadowsEnabled = !shadowsEnabled;
+        shadowsKeyPressed = true;
 
-        // [debug] blinn
-        std::cout << "gamma correction: " << gammaEnabled << std::endl;
+        // [debug] shadows
+        std::cout << "shadows: " << shadowsEnabled << std::endl;
     }
     if (glfwGetKey(window, GLFW_KEY_SPACE) == GLFW_RELEASE) {
-        gammaKeyPressed = false;
+        shadowsKeyPressed = false;
     }
 }
 

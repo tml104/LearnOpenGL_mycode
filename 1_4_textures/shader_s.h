@@ -135,9 +135,25 @@ public:
         glUniformMatrix2fv(glGetUniformLocation(ID, name.c_str()), 1, GL_FALSE, glm::value_ptr(mat));
     }
 
+    void setMatrix4Array(const std::string& name, GLsizei count, glm::mat4* mat) const {
+        glUniformMatrix4fv(glGetUniformLocation(ID, name.c_str()), count, GL_FALSE, glm::value_ptr(mat[0]));
+    }
+
+    void setMatrix3Array(const std::string& name, GLsizei count, glm::mat3* mat) const {
+        glUniformMatrix3fv(glGetUniformLocation(ID, name.c_str()), count, GL_FALSE, glm::value_ptr(mat[0]));
+    }
+
+    void setMatrix2Array(const std::string& name, GLsizei count, glm::mat2* mat) const {
+        glUniformMatrix2fv(glGetUniformLocation(ID, name.c_str()), count, GL_FALSE, glm::value_ptr(mat[0]));
+    }
+
     void setVec2(const std::string& name, const glm::vec2& value) const {
         // 第二个参数是向量个数，如果想要赋值向量数组，请手动调用glUniform2fv并改变第二个参数（最后一个参数也要变成&value[0][0]）
         glUniform2fv(glGetUniformLocation(ID, name.c_str()), 1, &value[0]);
+    }
+
+    void setVec2Array(const std::string& name, GLsizei count, const glm::vec2& value) const {
+        glUniform2fv(glGetUniformLocation(ID, name.c_str()), count, &value[0]);
     }
 
     void setVec2(const std::string& name, float v0, float v1) const {
@@ -149,12 +165,20 @@ public:
         glUniform3fv(glGetUniformLocation(ID, name.c_str()), 1, &value[0]);
     }
 
+    void setVec3Array(const std::string& name, GLsizei count, const glm::vec3& value) const {
+        glUniform3fv(glGetUniformLocation(ID, name.c_str()), count, &value[0]);
+    }
+
     void setVec3(const std::string& name, float v0, float v1, float v2) const {
         glUniform3f(glGetUniformLocation(ID, name.c_str()), v0,v1,v2);
     }
 
     void setVec4(const std::string& name, const glm::vec4& value) const {
         glUniform4fv(glGetUniformLocation(ID, name.c_str()), 1, &value[0]);
+    }
+
+    void setVec4Array(const std::string& name, GLsizei count, const glm::vec4& value) const {
+        glUniform4fv(glGetUniformLocation(ID, name.c_str()), count, &value[0]);
     }
 
     void setVec4(const std::string& name, float v0, float v1, float v2, float v3) const {
