@@ -21,6 +21,12 @@ void processInput(GLFWwindow* window);
 unsigned int loadTexture(char const* path, bool gammaCorrection);
 unsigned int loadCubemap(vector<std::string> faces);
 
+unsigned int lightSourceVAO, lightSourceVBO;
+unsigned int setLightSourceVAO();
+
+unsigned int wallVAO, wallVBO;
+unsigned int setWallVAO();
+
 unsigned int planeVAO, planeVBO;
 unsigned int setPlaneVAO();
 
@@ -33,13 +39,17 @@ unsigned int setQuadVAO();
 void renderScene(const Shader& shader);
 void renderCube();
 void renderQuad();
+void renderWall();
+void renderLightSource(const Shader& shader, const glm::vec3& lightPos);
 
 // settings
 const unsigned int SCR_WIDTH = 1920;
 const unsigned int SCR_HEIGHT = 1080;
+const unsigned int SCR_X_POS = 200;
+const unsigned int SCR_Y_POS = 200;
 
 // 全局变量2：用于相机系统
-Camera camera(glm::vec3(0.0f, 0.0f, 0.0f));
+Camera camera(glm::vec3{ 0.5f, 1.0f, 0.3f });
 
 float deltaTime = 0.0f;
 float lastFrame = 0.0f;
@@ -57,11 +67,13 @@ float lastY = SCR_HEIGHT / 2.0f;
 //bool gammaEnabled = false;
 //bool gammaKeyPressed = false;
 
-// 全局变量：切换有Shadows与无Shadows校正 (Space)
-bool shadowsEnabled = true;
-bool shadowsKeyPressed = false;
+// 全局变量：切换有Shadows与无Shadows (Space)
+//bool shadowsEnabled = true;
+//bool shadowsKeyPressed = false;
 
-//
+// 全局变量：切换有NormalMapping与无NormalMapping (Space)
+bool normalMapEnabled = true;
+bool normalMapPressed = false;
 
 int main()
 {
@@ -72,6 +84,7 @@ int main()
     glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 3);
     glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
     glfwWindowHint(GLFW_SAMPLES, 4);
+    glfwWindowHint(GLFW_RESIZABLE, GL_FALSE);
 
 #ifdef __APPLE__
     glfwWindowHint(GLFW_OPENGL_FORWARD_COMPAT, GL_TRUE);
@@ -87,7 +100,7 @@ int main()
         return -1;
     }
     glfwMakeContextCurrent(window);
-    glfwSetWindowPos(window, 200, 200);
+    glfwSetWindowPos(window, SCR_X_POS, SCR_Y_POS);
     glfwSetFramebufferSizeCallback(window, framebuffer_size_callback);
     glfwSetCursorPosCallback(window, mouse_callback);
     glfwSetScrollCallback(window, scroll_callback);
@@ -105,8 +118,9 @@ int main()
 
     // configure global opengl state
     // -----------------------------
+    glViewport(0, 0, SCR_WIDTH, SCR_HEIGHT);
      
-    glEnable(GL_CULL_FACE);
+    //glEnable(GL_CULL_FACE);
     glEnable(GL_DEPTH_TEST);
     glEnable(GL_BLEND);
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
@@ -115,49 +129,25 @@ int main()
 
     // build and compile our shader program
     // ------------------------------------
-
-    Shader cubeDepthShader("./shaders/5_4_PointShadows/cubeDepthShader.vs", "./shaders/5_4_PointShadows/cubeDepthShader.fs", "./shaders/5_4_PointShadows/cubeDepthShader.gs");
-    Shader blinnPhongShadowShader("./shaders/5_4_PointShadows/blinnPhongShadowShader.vs", "./shaders/5_4_PointShadows/blinnPhongShadowShader.fs");
+    Shader normalMappingShader("./shaders/5_5_NormalMapping/normalMappingShader.vs", "./shaders/5_5_NormalMapping/normalMappingShader.fs");
+    Shader lightSourceShader("./shaders/5_5_NormalMapping/lightSourceShader.vs", "./shaders/5_5_NormalMapping/lightSourceShader.fs");
 
     // load models & textures
-    setCubeVAO();
+    setWallVAO();
+    setLightSourceVAO();
 
-    unsigned int woodTexture = loadTexture("D:\\code\\vs\\first_glfw\\1_4_textures\\resources\\wood.png", false);
-
-    // create depth texture & framebuffer
-    const GLuint SHADOW_WIDTH = 1024, SHADOW_HEIGHT = 1024; // 注意：宽高必须相等
-    GLuint depthMapFBO;
-    glGenFramebuffers(1, &depthMapFBO);
-
-    GLuint depthCubemap;
-    glGenTextures(1, &depthCubemap);
-    glBindTexture(GL_TEXTURE_CUBE_MAP, depthCubemap);
-    for (int i = 0; i < 6; i++) {
-        glTexImage2D(GL_TEXTURE_CUBE_MAP_POSITIVE_X + i, 0, GL_DEPTH_COMPONENT, SHADOW_WIDTH, SHADOW_HEIGHT, 0, GL_DEPTH_COMPONENT, GL_FLOAT, NULL);
-    }
-    glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-    glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-    glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-    glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-    glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_WRAP_R, GL_CLAMP_TO_EDGE);
-
-    glBindFramebuffer(GL_FRAMEBUFFER, depthMapFBO);
-    glFramebufferTexture(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, depthCubemap, 0);
-    glDrawBuffer(GL_NONE); // 注意：禁用读写颜色缓冲，否则framebuffer不完整
-    glReadBuffer(GL_NONE);
-    if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE)
-        std::cout << "ERROR::FRAMEBUFFER:: Framebuffer is not complete!" << std::endl;
-    glBindFramebuffer(GL_FRAMEBUFFER, 0);
+    unsigned int diffuseMap = loadTexture("./resources/brickwall.jpg", false);
+    unsigned int normalMap = loadTexture("./resources/brickwall_normal.jpg", false);
 
     // lighting info
     // -------------
-    glm::vec3 lightPos{ 0.0f, 0.0f, 0.0f };
+    glm::vec3 lightPos{ 0.5f, 1.0f, 0.3f };
 
 
     // 指定 shader 中 纹理采样器所指向的纹理单元（前面的纹理默认绑定到纹理单元0上）
-    blinnPhongShadowShader.use();
-    blinnPhongShadowShader.setInt("depthMap", 0);
-    blinnPhongShadowShader.setInt("floorTexture", 1);
+    normalMappingShader.use();
+    normalMappingShader.setInt("diffuseMap", 0);
+    normalMappingShader.setInt("normalMap", 1);
 
     // render loop
     // -----------
@@ -175,84 +165,34 @@ int main()
         // render
         // ------
         glClearColor(0.2f, 0.3f, 0.3f, 1.0f);
+        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
         // change light position 
-        lightPos.z = sin(glfwGetTime() * 0.5) * 3.0;
+        //lightPos.z = sin(glfwGetTime() * 0.5) * 3.0;
 
-            // Create depth cubemap transformation matrices
-        const GLfloat lightSourceAspect = static_cast<GLfloat>(SHADOW_WIDTH) / static_cast<GLfloat>(SHADOW_HEIGHT);
-        const GLfloat lightSourceNearPlane = 1.0f;
-        const GLfloat lightSourceFarPlane = 25.0f;
-        glm::mat4 lightProjection = glm::perspective(glm::radians(90.0f), lightSourceAspect, lightSourceNearPlane, lightSourceFarPlane);
-
-        glm::mat4 lightSourceView;
-        std::vector<glm::mat4> shadowTransforms;
-
-        lightSourceView = glm::lookAt(lightPos, lightPos + glm::vec3(1.0f, 0.0f, 0.0f), glm::vec3(0.0f, -1.0f, 0.0f));
-        shadowTransforms.emplace_back(lightProjection * lightSourceView);
-
-        lightSourceView = glm::lookAt(lightPos, lightPos + glm::vec3(-1.0f, 0.0f, 0.0f), glm::vec3(0.0f, -1.0f, 0.0f));
-        shadowTransforms.emplace_back(lightProjection * lightSourceView);
-
-        lightSourceView = glm::lookAt(lightPos, lightPos + glm::vec3(0.0f, 1.0f, 0.0f), glm::vec3(0.0f, 0.0f, 1.0f));
-        shadowTransforms.emplace_back(lightProjection * lightSourceView);
-
-        lightSourceView = glm::lookAt(lightPos, lightPos + glm::vec3(0.0f, -1.0f, 0.0f), glm::vec3(0.0f, 0.0f, -1.0f));
-        shadowTransforms.emplace_back(lightProjection * lightSourceView);
-
-        lightSourceView = glm::lookAt(lightPos, lightPos + glm::vec3(0.0f, 0.0f, 1.0f), glm::vec3(0.0f, -1.0f, 0.0f));
-        shadowTransforms.emplace_back(lightProjection * lightSourceView);
-
-        lightSourceView = glm::lookAt(lightPos, lightPos + glm::vec3(0.0f, 0.0f, -1.0f), glm::vec3(0.0f, -1.0f, 0.0f));
-        shadowTransforms.emplace_back(lightProjection * lightSourceView);
-
-        //glm::mat4 shadowTransforms2[] = {
-        //    shadowTransforms[0],
-        //    shadowTransforms[1],
-        //    shadowTransforms[2],
-        //    shadowTransforms[3],
-        //    shadowTransforms[4],
-        //    shadowTransforms[5]
-        //};
-
-        // shader uniform变量
-        cubeDepthShader.use();
-        //cubeDepthShader.setVec3("lightPos", lightPos);
-        cubeDepthShader.setFloat("far_plane", lightSourceFarPlane);
-        //for (int i = 0; i < 6; i++) {
-        //    cubeDepthShader.setMatrix4(std::string("shadowMatrices[") + std::to_string(i) + std::string("]"), shadowTransforms[i]);
-        //}
-        //cubeDepthShader.setMatrix4Array("shadowMatrices", 6, shadowTransforms2);
-        cubeDepthShader.setMatrix4Array("shadowMatrices", 6, &shadowTransforms.front()); // 只能这么写……
-
-        // 渲染：从光源看过去的场景（Cube Map）
-        glViewport(0, 0, SHADOW_WIDTH, SHADOW_HEIGHT);
-        glBindFramebuffer(GL_FRAMEBUFFER, depthMapFBO);
-        glClear(GL_DEPTH_BUFFER_BIT);
-        cubeDepthShader.use();
-        cubeDepthShader.setVec3("lightPos", lightPos);
-        renderScene(cubeDepthShader);
-        glBindFramebuffer(GL_FRAMEBUFFER, 0);
-
-        // 渲染：场景（箱子）
-        glViewport(0, 0, SCR_WIDTH, SCR_HEIGHT);
-        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-        blinnPhongShadowShader.use();
+        // 渲染：场景
+        normalMappingShader.use();
         glm::mat4 cameraProjection = glm::perspective(glm::radians(camera.Zoom), (float)SCR_WIDTH / (float)SCR_HEIGHT, 0.1f, 100.0f);
         glm::mat4 cameraView = camera.GetViewMatrix();
-        blinnPhongShadowShader.setMatrix4("projection", cameraProjection);
-        blinnPhongShadowShader.setMatrix4("view", cameraView);
-        blinnPhongShadowShader.setVec3("lightPos", lightPos);
-        blinnPhongShadowShader.setVec3("viewPos", camera.Position);
+        normalMappingShader.setMatrix4("projection", cameraProjection);
+        normalMappingShader.setMatrix4("view", cameraView);
+        normalMappingShader.setVec3("lightPos", lightPos);
+        normalMappingShader.setVec3("viewPos", camera.Position);
 
-        blinnPhongShadowShader.setBool("shadows", shadowsEnabled);
-        blinnPhongShadowShader.setFloat("far_plane", lightSourceFarPlane);
+        normalMappingShader.setBool("normalMapping", normalMapEnabled);
 
-        glActiveTexture(GL_TEXTURE0);// depthMap
-        glBindTexture(GL_TEXTURE_CUBE_MAP, depthCubemap);
-        glActiveTexture(GL_TEXTURE1);// floorTexture
-        glBindTexture(GL_TEXTURE_2D, woodTexture);
-        renderScene(blinnPhongShadowShader);
+        glActiveTexture(GL_TEXTURE0);
+        glBindTexture(GL_TEXTURE_2D, diffuseMap);
+        glActiveTexture(GL_TEXTURE1);
+        glBindTexture(GL_TEXTURE_2D, normalMap);
+        renderScene(normalMappingShader);
+
+        // 渲染：光源方块
+        lightSourceShader.use();
+        lightSourceShader.setMatrix4("projection", cameraProjection);
+        lightSourceShader.setMatrix4("view", cameraView);
+
+        renderLightSource(lightSourceShader, lightPos);
 
         // glfw: swap buffers and poll IO events (keys pressed/released, mouse moved etc.)
         // -------------------------------------------------------------------------------
@@ -264,6 +204,166 @@ int main()
     // ------------------------------------------------------------------
     glfwTerminate();
     return 0;
+}
+
+unsigned int setLightSourceVAO()
+{
+    static float vertices[] = {
+        // Back face
+        -0.5f, -0.5f, -0.5f, 0.0f, 0.0f, -1.0f, 0.0f, 0.0f, // Bottom-left
+        0.5f, 0.5f, -0.5f, 0.0f, 0.0f, -1.0f, 1.0f, 1.0f, // top-right
+        0.5f, -0.5f, -0.5f, 0.0f, 0.0f, -1.0f, 1.0f, 0.0f, // bottom-right         
+        0.5f, 0.5f, -0.5f, 0.0f, 0.0f, -1.0f, 1.0f, 1.0f,  // top-right
+        -0.5f, -0.5f, -0.5f, 0.0f, 0.0f, -1.0f, 0.0f, 0.0f,  // bottom-left
+        -0.5f, 0.5f, -0.5f, 0.0f, 0.0f, -1.0f, 0.0f, 1.0f,// top-left
+        // Front face
+        -0.5f, -0.5f, 0.5f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f, // bottom-left
+        0.5f, -0.5f, 0.5f, 0.0f, 0.0f, 1.0f, 1.0f, 0.0f,  // bottom-right
+        0.5f, 0.5f, 0.5f, 0.0f, 0.0f, 1.0f, 1.0f, 1.0f,  // top-right
+        0.5f, 0.5f, 0.5f, 0.0f, 0.0f, 1.0f, 1.0f, 1.0f, // top-right
+        -0.5f, 0.5f, 0.5f, 0.0f, 0.0f, 1.0f, 0.0f, 1.0f,  // top-left
+        -0.5f, -0.5f, 0.5f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f,  // bottom-left
+        // Left face
+        -0.5f, 0.5f, 0.5f, -1.0f, 0.0f, 0.0f, 1.0f, 0.0f, // top-right
+        -0.5f, 0.5f, -0.5f, -1.0f, 0.0f, 0.0f, 1.0f, 1.0f, // top-left
+        -0.5f, -0.5f, -0.5f, -1.0f, 0.0f, 0.0f, 0.0f, 1.0f,  // bottom-left
+        -0.5f, -0.5f, -0.5f, -1.0f, 0.0f, 0.0f, 0.0f, 1.0f, // bottom-left
+        -0.5f, -0.5f, 0.5f, -1.0f, 0.0f, 0.0f, 0.0f, 0.0f,  // bottom-right
+        -0.5f, 0.5f, 0.5f, -1.0f, 0.0f, 0.0f, 1.0f, 0.0f, // top-right
+        // Right face
+        0.5f, 0.5f, 0.5f, 1.0f, 0.0f, 0.0f, 1.0f, 0.0f, // top-left
+        0.5f, -0.5f, -0.5f, 1.0f, 0.0f, 0.0f, 0.0f, 1.0f, // bottom-right
+        0.5f, 0.5f, -0.5f, 1.0f, 0.0f, 0.0f, 1.0f, 1.0f, // top-right         
+        0.5f, -0.5f, -0.5f, 1.0f, 0.0f, 0.0f, 0.0f, 1.0f,  // bottom-right
+        0.5f, 0.5f, 0.5f, 1.0f, 0.0f, 0.0f, 1.0f, 0.0f,  // top-left
+        0.5f, -0.5f, 0.5f, 1.0f, 0.0f, 0.0f, 0.0f, 0.0f, // bottom-left     
+        // Bottom face
+        -0.5f, -0.5f, -0.5f, 0.0f, -1.0f, 0.0f, 0.0f, 1.0f, // top-right
+        0.5f, -0.5f, -0.5f, 0.0f, -1.0f, 0.0f, 1.0f, 1.0f, // top-left
+        0.5f, -0.5f, 0.5f, 0.0f, -1.0f, 0.0f, 1.0f, 0.0f,// bottom-left
+        0.5f, -0.5f, 0.5f, 0.0f, -1.0f, 0.0f, 1.0f, 0.0f, // bottom-left
+        -0.5f, -0.5f, 0.5f, 0.0f, -1.0f, 0.0f, 0.0f, 0.0f, // bottom-right
+        -0.5f, -0.5f, -0.5f, 0.0f, -1.0f, 0.0f, 0.0f, 1.0f, // top-right
+        // Top face
+        -0.5f, 0.5f, -0.5f, 0.0f, 1.0f, 0.0f, 0.0f, 1.0f,// top-left
+        0.5f, 0.5f, 0.5f, 0.0f, 1.0f, 0.0f, 1.0f, 0.0f, // bottom-right
+        0.5f, 0.5f, -0.5f, 0.0f, 1.0f, 0.0f, 1.0f, 1.0f, // top-right     
+        0.5f, 0.5f, 0.5f, 0.0f, 1.0f, 0.0f, 1.0f, 0.0f, // bottom-right
+        -0.5f, 0.5f, -0.5f, 0.0f, 1.0f, 0.0f, 0.0f, 1.0f,// top-left
+        -0.5f, 0.5f, 0.5f, 0.0f, 1.0f, 0.0f, 0.0f, 0.0f // bottom-left        
+    };
+
+    glGenVertexArrays(1, &lightSourceVAO);
+    glGenBuffers(1, &lightSourceVBO);
+
+    glBindVertexArray(lightSourceVAO);
+    glBindBuffer(GL_ARRAY_BUFFER, lightSourceVBO);
+    glBufferData(GL_ARRAY_BUFFER, sizeof(vertices), vertices, GL_STATIC_DRAW);
+
+    glEnableVertexAttribArray(0);
+    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 8 * sizeof(float), (void*)0);
+    glEnableVertexAttribArray(1);
+    glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 8 * sizeof(float), (void*)(3 * sizeof(float)));
+    glEnableVertexAttribArray(2);
+    glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, 8 * sizeof(float), (void*)(6 * sizeof(float)));
+
+    glBindBuffer(GL_ARRAY_BUFFER, 0);
+    glBindVertexArray(0);
+
+    return lightSourceVAO;
+}
+
+unsigned int setWallVAO() {
+    // positions
+    static glm::vec3 pos1{ -1.0, 1.0, 0.0 };
+    static glm::vec3 pos2{ -1.0, -1.0, 0.0 };
+    static glm::vec3 pos3{ 1.0, -1.0, 0.0 };
+    static glm::vec3 pos4{ 1.0, 1.0, 0.0 };
+
+    // texture coordinates
+    static glm::vec2 uv1{ 0.0, 1.0 };
+    static glm::vec2 uv2{ 0.0, 0.0 };
+    static glm::vec2 uv3{ 1.0, 0.0 };
+    static glm::vec2 uv4{ 1.0, 1.0 };
+
+    // normal vector
+    static glm::vec3 nm{ 0.0, 0.0, 1.0 };
+
+    // calculate tangent/bitangent vectors of both triangles
+    static glm::vec3 tangent1, bitangent1;
+    static glm::vec3 tangent2, bitangent2;
+
+    // - triangle 1
+    static glm::vec3 edge1 = pos2 - pos1;
+    static glm::vec3 edge2 = pos3 - pos1;
+    static glm::vec2 deltaUV1 = uv2 - uv1;
+    static glm::vec2 deltaUV2 = uv3 - uv1;
+
+    static GLfloat f = 1.0f / (deltaUV1.x * deltaUV2.y - deltaUV2.x * deltaUV1.y);
+
+    tangent1.x = f * (deltaUV2.y * edge1.x - deltaUV1.y * edge2.x);
+    tangent1.y = f * (deltaUV2.y * edge1.y - deltaUV1.y * edge2.y);
+    tangent1.z = f * (deltaUV2.y * edge1.z - deltaUV1.y * edge2.z);
+    tangent1 = glm::normalize(tangent1);
+
+    bitangent1.x = f * (-deltaUV2.x * edge1.x + deltaUV1.x * edge2.x);
+    bitangent1.y = f * (-deltaUV2.x * edge1.y + deltaUV1.x * edge2.y);
+    bitangent1.z = f * (-deltaUV2.x * edge1.z + deltaUV1.x * edge2.z);
+    bitangent1 = glm::normalize(bitangent1);
+
+    // - triangle 2
+    edge1 = pos3 - pos1;
+    edge2 = pos4 - pos1;
+    deltaUV1 = uv3 - uv1;
+    deltaUV2 = uv4 - uv1;
+
+    f = 1.0f / (deltaUV1.x * deltaUV2.y - deltaUV2.x * deltaUV1.y);
+
+    tangent2.x = f * (deltaUV2.y * edge1.x - deltaUV1.y * edge2.x);
+    tangent2.y = f * (deltaUV2.y * edge1.y - deltaUV1.y * edge2.y);
+    tangent2.z = f * (deltaUV2.y * edge1.z - deltaUV1.y * edge2.z);
+    tangent2 = glm::normalize(tangent2);
+
+
+    bitangent2.x = f * (-deltaUV2.x * edge1.x + deltaUV1.x * edge2.x);
+    bitangent2.y = f * (-deltaUV2.x * edge1.y + deltaUV1.x * edge2.y);
+    bitangent2.z = f * (-deltaUV2.x * edge1.z + deltaUV1.x * edge2.z);
+    bitangent2 = glm::normalize(bitangent2);
+
+    static GLfloat wallVertices[] = {
+        // Positions            // normal         // TexCoords  // Tangent                          // Bitangent
+pos1.x, pos1.y, pos1.z, nm.x, nm.y, nm.z, uv1.x, uv1.y, tangent1.x, tangent1.y, tangent1.z, bitangent1.x, bitangent1.y, bitangent1.z,
+pos2.x, pos2.y, pos2.z, nm.x, nm.y, nm.z, uv2.x, uv2.y, tangent1.x, tangent1.y, tangent1.z, bitangent1.x, bitangent1.y, bitangent1.z,
+pos3.x, pos3.y, pos3.z, nm.x, nm.y, nm.z, uv3.x, uv3.y, tangent1.x, tangent1.y, tangent1.z, bitangent1.x, bitangent1.y, bitangent1.z,
+
+pos1.x, pos1.y, pos1.z, nm.x, nm.y, nm.z, uv1.x, uv1.y, tangent2.x, tangent2.y, tangent2.z, bitangent2.x, bitangent2.y, bitangent2.z,
+pos3.x, pos3.y, pos3.z, nm.x, nm.y, nm.z, uv3.x, uv3.y, tangent2.x, tangent2.y, tangent2.z, bitangent2.x, bitangent2.y, bitangent2.z,
+pos4.x, pos4.y, pos4.z, nm.x, nm.y, nm.z, uv4.x, uv4.y, tangent2.x, tangent2.y, tangent2.z, bitangent2.x, bitangent2.y, bitangent2.z
+    };
+
+    // Setup VAO
+    glGenVertexArrays(1, &wallVAO);
+    glGenBuffers(1, &wallVBO);
+
+    glBindVertexArray(wallVAO);
+    glBindBuffer(GL_ARRAY_BUFFER, wallVBO);
+    glBufferData(GL_ARRAY_BUFFER, sizeof(wallVertices), &wallVertices, GL_STATIC_DRAW);
+
+    glEnableVertexAttribArray(0);
+    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 14 * sizeof(GLfloat), (GLvoid*)0);
+    glEnableVertexAttribArray(1);
+    glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 14 * sizeof(GLfloat), (GLvoid*)(3*sizeof(GLfloat)));
+    glEnableVertexAttribArray(2);
+    glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, 14 * sizeof(GLfloat), (GLvoid*)(6 * sizeof(GLfloat)));
+    glEnableVertexAttribArray(3);
+    glVertexAttribPointer(3, 3, GL_FLOAT, GL_FALSE, 14 * sizeof(GLfloat), (GLvoid*)(8 * sizeof(GLfloat)));
+    glEnableVertexAttribArray(4);
+    glVertexAttribPointer(4, 3, GL_FLOAT, GL_FALSE, 14 * sizeof(GLfloat), (GLvoid*)(11 * sizeof(GLfloat)));
+
+    glBindBuffer(GL_ARRAY_BUFFER, 0);
+    glBindVertexArray(0);
+
+    return wallVAO;
 }
 
 unsigned int setPlaneVAO()
@@ -396,44 +496,11 @@ unsigned int setQuadVAO()
 
 void renderScene(const Shader& shader)
 {
-    // Room cube
-    glm::mat4 model{1.0f};
-    model = glm::scale(model, glm::vec3(10.0)); // 放大10倍
+    glm::mat4 model{ 1.0f };
+    model = glm::rotate(model, glm::radians((GLfloat)glfwGetTime() * -10), glm::normalize(glm::vec3(1.0, 0.0, 1.0))); // Rotates the quad to show normal mapping works in all directions
     shader.setMatrix4("model", model);
-    glDisable(GL_CULL_FACE);
-    shader.setBool("reverse_normals", true);
-    renderCube();
-    shader.setBool("reverse_normals", false);
-    glEnable(GL_CULL_FACE);
+    renderWall();
 
-    // Cubes
-    model = glm::mat4{ 1.0f };
-    model = glm::translate(model, glm::vec3(4.0f, -3.5f, 0.0));
-    shader.setMatrix4("model", model);
-    renderCube();
-
-    model = glm::mat4{ 1.0f };
-    model = glm::translate(model, glm::vec3(2.0f, 3.0f, 1.0));
-    model = glm::scale(model, glm::vec3(1.5));
-    shader.setMatrix4("model", model);
-    renderCube();
-
-    model = glm::mat4{ 1.0f };
-    model = glm::translate(model, glm::vec3(-3.0f, -1.0f, 0.0));
-    shader.setMatrix4("model", model);
-    renderCube();
-
-    model = glm::mat4{ 1.0f };
-    model = glm::translate(model, glm::vec3(-1.5f, 1.0f, 1.5));
-    shader.setMatrix4("model", model);
-    renderCube();
-
-    model = glm::mat4{ 1.0f };
-    model = glm::translate(model, glm::vec3(-1.5f, 2.0f, -3.0));
-    model = glm::rotate(model, 60.0f, glm::normalize(glm::vec3(1.0, 0.0, 1.0)));
-    model = glm::scale(model, glm::vec3(1.5));
-    shader.setMatrix4("model", model);
-    renderCube();
 }
 
 void renderCube()
@@ -448,6 +515,26 @@ void renderQuad()
 {
     glBindVertexArray(quadVAO);
     glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
+    glBindVertexArray(0);
+}
+
+void renderWall()
+{
+    glBindVertexArray(wallVAO);
+    glDrawArrays(GL_TRIANGLE_STRIP, 0, 6);
+    glBindVertexArray(0);
+}
+
+void renderLightSource(const Shader& shader, const glm::vec3& lightPos)
+{
+    glm::mat4 model{ 1.0f };
+    model = glm::translate(model, lightPos);
+    model = glm::scale(model, glm::vec3(0.1f));
+    shader.setMatrix4("model", model);
+
+    // render lightSource Cube
+    glBindVertexArray(lightSourceVAO);
+    glDrawArrays(GL_TRIANGLES, 0, 36);
     glBindVertexArray(0);
 }
 
@@ -488,15 +575,15 @@ void processInput(GLFWwindow* window)
         camera.ProcessMouseMovement(keyboardMovmentSpeed, 0.0f);
 
     // SPACE: gamma correction
-    if (glfwGetKey(window, GLFW_KEY_SPACE) == GLFW_PRESS && !shadowsKeyPressed) {
-        shadowsEnabled = !shadowsEnabled;
-        shadowsKeyPressed = true;
+    if (glfwGetKey(window, GLFW_KEY_SPACE) == GLFW_PRESS && !normalMapPressed) {
+        normalMapEnabled = !normalMapEnabled;
+        normalMapPressed = true;
 
         // [debug] shadows
-        std::cout << "shadows: " << shadowsEnabled << std::endl;
+        std::cout << "shadows: " << normalMapEnabled << std::endl;
     }
     if (glfwGetKey(window, GLFW_KEY_SPACE) == GLFW_RELEASE) {
-        shadowsKeyPressed = false;
+        normalMapPressed = false;
     }
 }
 
