@@ -72,8 +72,12 @@ float lastY = SCR_HEIGHT / 2.0f;
 //bool shadowsKeyPressed = false;
 
 // 全局变量：切换有NormalMapping与无NormalMapping (Space)
-bool normalMapEnabled = true;
-bool normalMapPressed = false;
+//bool normalMapEnabled = true;
+//bool normalMapPressed = false;
+
+// 全局变量：切换有ParallaxMapping与无ParallaxMapping (Space)
+bool parallaxMappingEnabled = true;
+bool parallaxMappingPressed = false;
 
 int main()
 {
@@ -129,15 +133,16 @@ int main()
 
     // build and compile our shader program
     // ------------------------------------
-    Shader normalMappingShader("./shaders/5_5_NormalMapping/normalMappingShader.vs", "./shaders/5_5_NormalMapping/normalMappingShader.fs");
-    Shader lightSourceShader("./shaders/5_5_NormalMapping/lightSourceShader.vs", "./shaders/5_5_NormalMapping/lightSourceShader.fs");
+    Shader parallaxMappingShader("./shaders/5_6_ParallaxMapping/parallaxMappingShader.vs", "./shaders/5_6_ParallaxMapping/parallaxMappingShader.fs");
+    Shader lightSourceShader("./shaders/5_6_ParallaxMapping/lightSourceShader.vs", "./shaders/5_6_ParallaxMapping/lightSourceShader.fs");
 
     // load models & textures
     setWallVAO();
     setLightSourceVAO();
 
-    unsigned int diffuseMap = loadTexture("./resources/brickwall.jpg", false);
-    unsigned int normalMap = loadTexture("./resources/brickwall_normal.jpg", false);
+    unsigned int diffuseMap = loadTexture("./resources/bricks2.jpg", false);
+    unsigned int normalMap = loadTexture("./resources/bricks2_normal.jpg", false); // 注意：贴图的加载有可能需要反转normal表示的方向
+    unsigned int heightMap = loadTexture("./resources/bricks2_disp.jpg", false);
 
     // lighting info
     // -------------
@@ -145,9 +150,12 @@ int main()
 
 
     // 指定 shader 中 纹理采样器所指向的纹理单元（前面的纹理默认绑定到纹理单元0上）
-    normalMappingShader.use();
-    normalMappingShader.setInt("diffuseMap", 0);
-    normalMappingShader.setInt("normalMap", 1);
+    parallaxMappingShader.use();
+    parallaxMappingShader.setInt("diffuseMap", 0);
+    parallaxMappingShader.setInt("normalMap", 1);
+    parallaxMappingShader.setInt("heightMap", 2);
+
+    const float height_scale = 0.1;
 
     // render loop
     // -----------
@@ -171,21 +179,24 @@ int main()
         //lightPos.z = sin(glfwGetTime() * 0.5) * 3.0;
 
         // 渲染：场景
-        normalMappingShader.use();
+        parallaxMappingShader.use();
         glm::mat4 cameraProjection = glm::perspective(glm::radians(camera.Zoom), (float)SCR_WIDTH / (float)SCR_HEIGHT, 0.1f, 100.0f);
         glm::mat4 cameraView = camera.GetViewMatrix();
-        normalMappingShader.setMatrix4("projection", cameraProjection);
-        normalMappingShader.setMatrix4("view", cameraView);
-        normalMappingShader.setVec3("lightPos", lightPos);
-        normalMappingShader.setVec3("viewPos", camera.Position);
+        parallaxMappingShader.setMatrix4("projection", cameraProjection);
+        parallaxMappingShader.setMatrix4("view", cameraView);
+        parallaxMappingShader.setVec3("lightPos", lightPos);
+        parallaxMappingShader.setVec3("viewPos", camera.Position);
 
-        normalMappingShader.setBool("normalMapping", normalMapEnabled);
+        parallaxMappingShader.setBool("parallaxMappingEnabled", parallaxMappingEnabled);
+        parallaxMappingShader.setFloat("height_scale", height_scale);
 
         glActiveTexture(GL_TEXTURE0);
         glBindTexture(GL_TEXTURE_2D, diffuseMap);
         glActiveTexture(GL_TEXTURE1);
         glBindTexture(GL_TEXTURE_2D, normalMap);
-        renderScene(normalMappingShader);
+        glActiveTexture(GL_TEXTURE2);
+        glBindTexture(GL_TEXTURE_2D, heightMap);
+        renderScene(parallaxMappingShader);
 
         // 渲染：光源方块
         lightSourceShader.use();
@@ -575,15 +586,15 @@ void processInput(GLFWwindow* window)
         camera.ProcessMouseMovement(keyboardMovmentSpeed, 0.0f);
 
     // SPACE: gamma correction
-    if (glfwGetKey(window, GLFW_KEY_SPACE) == GLFW_PRESS && !normalMapPressed) {
-        normalMapEnabled = !normalMapEnabled;
-        normalMapPressed = true;
+    if (glfwGetKey(window, GLFW_KEY_SPACE) == GLFW_PRESS && !parallaxMappingPressed) {
+        parallaxMappingEnabled = !parallaxMappingEnabled;
+        parallaxMappingPressed = true;
 
-        // [debug] shadows
-        std::cout << "shadows: " << normalMapEnabled << std::endl;
+        // [debug] parallax mapping
+        std::cout << "parallax mapping: " << parallaxMappingEnabled << std::endl;
     }
     if (glfwGetKey(window, GLFW_KEY_SPACE) == GLFW_RELEASE) {
-        normalMapPressed = false;
+        parallaxMappingPressed = false;
     }
 }
 
