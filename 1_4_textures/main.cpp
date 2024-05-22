@@ -58,7 +58,6 @@ bool firstMouse = true;
 float lastX = SCR_WIDTH / 2.0f;
 float lastY = SCR_HEIGHT / 2.0f;
 
-
 // 全局变量：切换blinn-phong与普通phong（用两个变量，确保在按下B松开后再次按下才会切换状态） (B)
 //bool blinn = false;
 //bool blinnKeyPressed = false;
@@ -78,6 +77,7 @@ float lastY = SCR_HEIGHT / 2.0f;
 // 全局变量：切换有ParallaxMapping与无ParallaxMapping (Space)
 bool parallaxMappingEnabled = true;
 bool parallaxMappingPressed = false;
+float height_scale = 0.1;
 
 int main()
 {
@@ -140,9 +140,13 @@ int main()
     setWallVAO();
     setLightSourceVAO();
 
-    unsigned int diffuseMap = loadTexture("./resources/bricks2.jpg", false);
-    unsigned int normalMap = loadTexture("./resources/bricks2_normal.jpg", false); // 注意：贴图的加载有可能需要反转normal表示的方向
-    unsigned int heightMap = loadTexture("./resources/bricks2_disp.jpg", false);
+    //unsigned int diffuseMap = loadTexture("./resources/bricks2.jpg", false);
+    //unsigned int normalMap = loadTexture("./resources/bricks2_normal.jpg", false); // 注意：贴图的加载有可能需要反转normal表示的方向
+    //unsigned int heightMap = loadTexture("./resources/bricks2_disp.jpg", false);
+
+    unsigned int diffuseMap = loadTexture("./resources/wood.png", false);
+    unsigned int normalMap = loadTexture("./resources/toy_box_normal.png", false); // 注意：贴图的加载有可能需要反转normal表示的方向
+    unsigned int heightMap = loadTexture("./resources/toy_box_disp.png", false);
 
     // lighting info
     // -------------
@@ -154,8 +158,6 @@ int main()
     parallaxMappingShader.setInt("diffuseMap", 0);
     parallaxMappingShader.setInt("normalMap", 1);
     parallaxMappingShader.setInt("heightMap", 2);
-
-    const float height_scale = 0.1;
 
     // render loop
     // -----------
@@ -508,7 +510,7 @@ unsigned int setQuadVAO()
 void renderScene(const Shader& shader)
 {
     glm::mat4 model{ 1.0f };
-    model = glm::rotate(model, glm::radians((GLfloat)glfwGetTime() * -10), glm::normalize(glm::vec3(1.0, 0.0, 1.0))); // Rotates the quad to show normal mapping works in all directions
+    //model = glm::rotate(model, glm::radians((GLfloat)glfwGetTime() * -10), glm::normalize(glm::vec3(1.0, 0.0, 1.0))); // Rotates the quad to show normal mapping works in all directions
     shader.setMatrix4("model", model);
     renderWall();
 
@@ -595,6 +597,20 @@ void processInput(GLFWwindow* window)
     }
     if (glfwGetKey(window, GLFW_KEY_SPACE) == GLFW_RELEASE) {
         parallaxMappingPressed = false;
+    }
+
+    /*
+        Q: height_scale down
+        E: height_scale up
+    */
+    if (glfwGetKey(window, GLFW_KEY_Q) == GLFW_PRESS) {
+        height_scale = std::max(0.0, height_scale - 0.01);
+        std::cout << "height_scale down: " << height_scale << std::endl;
+    }
+
+    if (glfwGetKey(window, GLFW_KEY_E) == GLFW_PRESS) {
+        height_scale = std::min(1.0, height_scale + 0.01);
+        std::cout << "height_scale up: " << height_scale << std::endl;
     }
 }
 
