@@ -49,7 +49,7 @@ const unsigned int SCR_X_POS = 200;
 const unsigned int SCR_Y_POS = 200;
 
 // 全局变量2：用于相机系统
-Camera camera(glm::vec3{ 0.5f, 1.0f, 0.3f });
+Camera camera(glm::vec3{ 0.0f, 0.0f, 0.0f });
 
 float deltaTime = 0.0f;
 float lastFrame = 0.0f;
@@ -75,9 +75,11 @@ float lastY = SCR_HEIGHT / 2.0f;
 //bool normalMapPressed = false;
 
 // 全局变量：切换有ParallaxMapping与无ParallaxMapping (Space)
-bool parallaxMappingEnabled = true;
-bool parallaxMappingPressed = false;
-float height_scale = 0.1;
+//bool parallaxMappingEnabled = true;
+//bool parallaxMappingPressed = false;
+//float height_scale = 0.1;
+
+float exposure = 1.0f;
 
 int main()
 {
@@ -133,31 +135,65 @@ int main()
 
     // build and compile our shader program
     // ------------------------------------
-    Shader parallaxMappingShader("./shaders/5_6_ParallaxMapping/parallaxMappingShader.vs", "./shaders/5_6_ParallaxMapping/parallaxMappingShader.fs");
-    Shader lightSourceShader("./shaders/5_6_ParallaxMapping/lightSourceShader.vs", "./shaders/5_6_ParallaxMapping/lightSourceShader.fs");
+
+    Shader hdrShader("./shaders/5_7_HDR_ToneMapping/HDRShader.vs", "./shaders/5_7_HDR_ToneMapping/HDRShader.fs");
+    Shader toneMappingShader("./shaders/5_7_HDR_ToneMapping/toneMappingShader.vs", "./shaders/5_7_HDR_ToneMapping/toneMappingShader.fs");
 
     // load models & textures
-    setWallVAO();
-    setLightSourceVAO();
-
-    //unsigned int diffuseMap = loadTexture("./resources/bricks2.jpg", false);
-    //unsigned int normalMap = loadTexture("./resources/bricks2_normal.jpg", false); // 注意：贴图的加载有可能需要反转normal表示的方向
-    //unsigned int heightMap = loadTexture("./resources/bricks2_disp.jpg", false);
+    setCubeVAO();
+    setQuadVAO();
 
     unsigned int diffuseMap = loadTexture("./resources/wood.png", false);
-    unsigned int normalMap = loadTexture("./resources/toy_box_normal.png", false); // 注意：贴图的加载有可能需要反转normal表示的方向
-    unsigned int heightMap = loadTexture("./resources/toy_box_disp.png", false);
 
     // lighting info
     // -------------
-    glm::vec3 lightPos{ 0.5f, 1.0f, 0.3f };
+    std::vector<glm::vec3> lightPosVec{
+        {0.0f, 0.0f, 49.5f},
+        {-1.4f, -1.9f, 9.0f},
+        {0.0f, -1.8f, 4.0f},
+        {0.8f, -1.7f, 6.0f}
+    };
+
+    std::vector<glm::vec3> lightColorVec{
+    {200.0f, 200.0f, 200.0f},
+    {0.1f, 0.0f, 0.0f},
+    {0.0f, 0.0f, 0.2f},
+    {0.0f, 0.1f, 0.0f}
+    };
+
+    // Set up floating point framebuffer to render scene to
+    GLuint hdrFBO;
+    glGenFramebuffers(1, &hdrFBO);
+
+    GLuint hdrColorMap;
+    glGenTextures(1, &hdrColorMap);
+    glBindTexture(GL_TEXTURE_2D, hdrColorMap);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA16F, SCR_WIDTH, SCR_HEIGHT, 0, GL_RGBA, GL_FLOAT, NULL);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+
+    GLuint hdrDepthRbo;
+    glGenRenderbuffers(1, &hdrDepthRbo);
+    glBindRenderbuffer(GL_RENDERBUFFER, hdrDepthRbo);
+    glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH_COMPONENT, SCR_WIDTH, SCR_HEIGHT);
+
+    glBindFramebuffer(GL_FRAMEBUFFER, hdrFBO);
+    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, hdrColorMap, 0);
+    glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_RENDERBUFFER, hdrDepthRbo);
+    if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE)
+        std::cout << "Framebuffer not complete!" << std::endl;
+    glBindFramebuffer(GL_FRAMEBUFFER, 0);
 
 
     // 指定 shader 中 纹理采样器所指向的纹理单元（前面的纹理默认绑定到纹理单元0上）
-    parallaxMappingShader.use();
-    parallaxMappingShader.setInt("diffuseMap", 0);
-    parallaxMappingShader.setInt("normalMap", 1);
-    parallaxMappingShader.setInt("heightMap", 2);
+    hdrShader.use();
+    hdrShader.setInt("diffuseMap", 0);
+
+    toneMappingShader.use();
+    toneMappingShader.setInt("hdrMap", 0);
+
+
+    glClearColor(0.2f, 0.3f, 0.3f, 1.0f); // 这个可以只用一次吗？
 
     // render loop
     // -----------
@@ -174,38 +210,41 @@ int main()
 
         // render
         // ------
-        glClearColor(0.2f, 0.3f, 0.3f, 1.0f);
+
+        // 渲染：场景（在HDR framebuffer中）
+        glBindFramebuffer(GL_FRAMEBUFFER, hdrFBO);
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
-        // change light position 
-        //lightPos.z = sin(glfwGetTime() * 0.5) * 3.0;
-
-        // 渲染：场景
-        parallaxMappingShader.use();
+        hdrShader.use();
         glm::mat4 cameraProjection = glm::perspective(glm::radians(camera.Zoom), (float)SCR_WIDTH / (float)SCR_HEIGHT, 0.1f, 100.0f);
         glm::mat4 cameraView = camera.GetViewMatrix();
-        parallaxMappingShader.setMatrix4("projection", cameraProjection);
-        parallaxMappingShader.setMatrix4("view", cameraView);
-        parallaxMappingShader.setVec3("lightPos", lightPos);
-        parallaxMappingShader.setVec3("viewPos", camera.Position);
+        hdrShader.setMatrix4("projection", cameraProjection);
+        hdrShader.setMatrix4("view", cameraView);
+        hdrShader.setVec3("viewPos", camera.Position);
 
-        parallaxMappingShader.setBool("parallaxMappingEnabled", parallaxMappingEnabled);
-        parallaxMappingShader.setFloat("height_scale", height_scale);
+        hdrShader.setVec3Array("lightPosList", 4, lightPosVec.front());
+        hdrShader.setVec3Array("lightColorList", 4, lightColorVec.front());
+        //for (int i = 0; i < 4; i++) {
+        //    hdrShader.setVec3(std::string("lightPosList[") + std::to_string(i) + std::string("]"), lightPosVec[i]);
+        //    hdrShader.setVec3(std::string("lightColorList[") + std::to_string(i) + std::string("]"), lightColorVec[i]);
+        //}
+
 
         glActiveTexture(GL_TEXTURE0);
         glBindTexture(GL_TEXTURE_2D, diffuseMap);
-        glActiveTexture(GL_TEXTURE1);
-        glBindTexture(GL_TEXTURE_2D, normalMap);
-        glActiveTexture(GL_TEXTURE2);
-        glBindTexture(GL_TEXTURE_2D, heightMap);
-        renderScene(parallaxMappingShader);
+        renderScene(hdrShader); // TODO: change scene
 
-        // 渲染：光源方块
-        lightSourceShader.use();
-        lightSourceShader.setMatrix4("projection", cameraProjection);
-        lightSourceShader.setMatrix4("view", cameraView);
+        glBindFramebuffer(GL_FRAMEBUFFER, 0);
 
-        renderLightSource(lightSourceShader, lightPos);
+        // 渲染：后处理tone mapping
+        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+        toneMappingShader.use();
+        toneMappingShader.setFloat("exposure", exposure);
+
+        glActiveTexture(GL_TEXTURE0);
+        glBindTexture(GL_TEXTURE_2D, hdrColorMap);
+
+        renderQuad();
 
         // glfw: swap buffers and poll IO events (keys pressed/released, mouse moved etc.)
         // -------------------------------------------------------------------------------
@@ -415,48 +454,48 @@ unsigned int setPlaneVAO()
 unsigned int setCubeVAO()
 {
     static float vertices[] = {
-        // Back face
-        -0.5f, -0.5f, -0.5f, 0.0f, 0.0f, -1.0f, 0.0f, 0.0f, // Bottom-left
-        0.5f, 0.5f, -0.5f, 0.0f, 0.0f, -1.0f, 1.0f, 1.0f, // top-right
-        0.5f, -0.5f, -0.5f, 0.0f, 0.0f, -1.0f, 1.0f, 0.0f, // bottom-right         
-        0.5f, 0.5f, -0.5f, 0.0f, 0.0f, -1.0f, 1.0f, 1.0f,  // top-right
-        -0.5f, -0.5f, -0.5f, 0.0f, 0.0f, -1.0f, 0.0f, 0.0f,  // bottom-left
-        -0.5f, 0.5f, -0.5f, 0.0f, 0.0f, -1.0f, 0.0f, 1.0f,// top-left
-        // Front face
-        -0.5f, -0.5f, 0.5f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f, // bottom-left
-        0.5f, -0.5f, 0.5f, 0.0f, 0.0f, 1.0f, 1.0f, 0.0f,  // bottom-right
-        0.5f, 0.5f, 0.5f, 0.0f, 0.0f, 1.0f, 1.0f, 1.0f,  // top-right
-        0.5f, 0.5f, 0.5f, 0.0f, 0.0f, 1.0f, 1.0f, 1.0f, // top-right
-        -0.5f, 0.5f, 0.5f, 0.0f, 0.0f, 1.0f, 0.0f, 1.0f,  // top-left
-        -0.5f, -0.5f, 0.5f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f,  // bottom-left
-        // Left face
-        -0.5f, 0.5f, 0.5f, -1.0f, 0.0f, 0.0f, 1.0f, 0.0f, // top-right
-        -0.5f, 0.5f, -0.5f, -1.0f, 0.0f, 0.0f, 1.0f, 1.0f, // top-left
-        -0.5f, -0.5f, -0.5f, -1.0f, 0.0f, 0.0f, 0.0f, 1.0f,  // bottom-left
-        -0.5f, -0.5f, -0.5f, -1.0f, 0.0f, 0.0f, 0.0f, 1.0f, // bottom-left
-        -0.5f, -0.5f, 0.5f, -1.0f, 0.0f, 0.0f, 0.0f, 0.0f,  // bottom-right
-        -0.5f, 0.5f, 0.5f, -1.0f, 0.0f, 0.0f, 1.0f, 0.0f, // top-right
-        // Right face
-        0.5f, 0.5f, 0.5f, 1.0f, 0.0f, 0.0f, 1.0f, 0.0f, // top-left
-        0.5f, -0.5f, -0.5f, 1.0f, 0.0f, 0.0f, 0.0f, 1.0f, // bottom-right
-        0.5f, 0.5f, -0.5f, 1.0f, 0.0f, 0.0f, 1.0f, 1.0f, // top-right         
-        0.5f, -0.5f, -0.5f, 1.0f, 0.0f, 0.0f, 0.0f, 1.0f,  // bottom-right
-        0.5f, 0.5f, 0.5f, 1.0f, 0.0f, 0.0f, 1.0f, 0.0f,  // top-left
-        0.5f, -0.5f, 0.5f, 1.0f, 0.0f, 0.0f, 0.0f, 0.0f, // bottom-left     
-        // Bottom face
-        -0.5f, -0.5f, -0.5f, 0.0f, -1.0f, 0.0f, 0.0f, 1.0f, // top-right
-        0.5f, -0.5f, -0.5f, 0.0f, -1.0f, 0.0f, 1.0f, 1.0f, // top-left
-        0.5f, -0.5f, 0.5f, 0.0f, -1.0f, 0.0f, 1.0f, 0.0f,// bottom-left
-        0.5f, -0.5f, 0.5f, 0.0f, -1.0f, 0.0f, 1.0f, 0.0f, // bottom-left
-        -0.5f, -0.5f, 0.5f, 0.0f, -1.0f, 0.0f, 0.0f, 0.0f, // bottom-right
-        -0.5f, -0.5f, -0.5f, 0.0f, -1.0f, 0.0f, 0.0f, 1.0f, // top-right
-        // Top face
-        -0.5f, 0.5f, -0.5f, 0.0f, 1.0f, 0.0f, 0.0f, 1.0f,// top-left
-        0.5f, 0.5f, 0.5f, 0.0f, 1.0f, 0.0f, 1.0f, 0.0f, // bottom-right
-        0.5f, 0.5f, -0.5f, 0.0f, 1.0f, 0.0f, 1.0f, 1.0f, // top-right     
-        0.5f, 0.5f, 0.5f, 0.0f, 1.0f, 0.0f, 1.0f, 0.0f, // bottom-right
-        -0.5f, 0.5f, -0.5f, 0.0f, 1.0f, 0.0f, 0.0f, 1.0f,// top-left
-        -0.5f, 0.5f, 0.5f, 0.0f, 1.0f, 0.0f, 0.0f, 0.0f // bottom-left        
+        // back face
+        -1.0f, -1.0f, -1.0f,  0.0f,  0.0f, -1.0f, 0.0f, 0.0f, // bottom-left
+         1.0f,  1.0f, -1.0f,  0.0f,  0.0f, -1.0f, 1.0f, 1.0f, // top-right
+         1.0f, -1.0f, -1.0f,  0.0f,  0.0f, -1.0f, 1.0f, 0.0f, // bottom-right         
+         1.0f,  1.0f, -1.0f,  0.0f,  0.0f, -1.0f, 1.0f, 1.0f, // top-right
+        -1.0f, -1.0f, -1.0f,  0.0f,  0.0f, -1.0f, 0.0f, 0.0f, // bottom-left
+        -1.0f,  1.0f, -1.0f,  0.0f,  0.0f, -1.0f, 0.0f, 1.0f, // top-left
+        // front face
+        -1.0f, -1.0f,  1.0f,  0.0f,  0.0f,  1.0f, 0.0f, 0.0f, // bottom-left
+         1.0f, -1.0f,  1.0f,  0.0f,  0.0f,  1.0f, 1.0f, 0.0f, // bottom-right
+         1.0f,  1.0f,  1.0f,  0.0f,  0.0f,  1.0f, 1.0f, 1.0f, // top-right
+         1.0f,  1.0f,  1.0f,  0.0f,  0.0f,  1.0f, 1.0f, 1.0f, // top-right
+        -1.0f,  1.0f,  1.0f,  0.0f,  0.0f,  1.0f, 0.0f, 1.0f, // top-left
+        -1.0f, -1.0f,  1.0f,  0.0f,  0.0f,  1.0f, 0.0f, 0.0f, // bottom-left
+        // left face
+        -1.0f,  1.0f,  1.0f, -1.0f,  0.0f,  0.0f, 1.0f, 0.0f, // top-right
+        -1.0f,  1.0f, -1.0f, -1.0f,  0.0f,  0.0f, 1.0f, 1.0f, // top-left
+        -1.0f, -1.0f, -1.0f, -1.0f,  0.0f,  0.0f, 0.0f, 1.0f, // bottom-left
+        -1.0f, -1.0f, -1.0f, -1.0f,  0.0f,  0.0f, 0.0f, 1.0f, // bottom-left
+        -1.0f, -1.0f,  1.0f, -1.0f,  0.0f,  0.0f, 0.0f, 0.0f, // bottom-right
+        -1.0f,  1.0f,  1.0f, -1.0f,  0.0f,  0.0f, 1.0f, 0.0f, // top-right
+        // right face
+         1.0f,  1.0f,  1.0f,  1.0f,  0.0f,  0.0f, 1.0f, 0.0f, // top-left
+         1.0f, -1.0f, -1.0f,  1.0f,  0.0f,  0.0f, 0.0f, 1.0f, // bottom-right
+         1.0f,  1.0f, -1.0f,  1.0f,  0.0f,  0.0f, 1.0f, 1.0f, // top-right         
+         1.0f, -1.0f, -1.0f,  1.0f,  0.0f,  0.0f, 0.0f, 1.0f, // bottom-right
+         1.0f,  1.0f,  1.0f,  1.0f,  0.0f,  0.0f, 1.0f, 0.0f, // top-left
+         1.0f, -1.0f,  1.0f,  1.0f,  0.0f,  0.0f, 0.0f, 0.0f, // bottom-left     
+        // bottom face
+        -1.0f, -1.0f, -1.0f,  0.0f, -1.0f,  0.0f, 0.0f, 1.0f, // top-right
+         1.0f, -1.0f, -1.0f,  0.0f, -1.0f,  0.0f, 1.0f, 1.0f, // top-left
+         1.0f, -1.0f,  1.0f,  0.0f, -1.0f,  0.0f, 1.0f, 0.0f, // bottom-left
+         1.0f, -1.0f,  1.0f,  0.0f, -1.0f,  0.0f, 1.0f, 0.0f, // bottom-left
+        -1.0f, -1.0f,  1.0f,  0.0f, -1.0f,  0.0f, 0.0f, 0.0f, // bottom-right
+        -1.0f, -1.0f, -1.0f,  0.0f, -1.0f,  0.0f, 0.0f, 1.0f, // top-right
+        // top face
+        -1.0f,  1.0f, -1.0f,  0.0f,  1.0f,  0.0f, 0.0f, 1.0f, // top-left
+         1.0f,  1.0f , 1.0f,  0.0f,  1.0f,  0.0f, 1.0f, 0.0f, // bottom-right
+         1.0f,  1.0f, -1.0f,  0.0f,  1.0f,  0.0f, 1.0f, 1.0f, // top-right     
+         1.0f,  1.0f,  1.0f,  0.0f,  1.0f,  0.0f, 1.0f, 0.0f, // bottom-right
+        -1.0f,  1.0f, -1.0f,  0.0f,  1.0f,  0.0f, 0.0f, 1.0f, // top-left
+        -1.0f,  1.0f,  1.0f,  0.0f,  1.0f,  0.0f, 0.0f, 0.0f  // bottom-left        
     };
 
     glGenVertexArrays(1, &cubeVAO);
@@ -510,10 +549,11 @@ unsigned int setQuadVAO()
 void renderScene(const Shader& shader)
 {
     glm::mat4 model{ 1.0f };
-    //model = glm::rotate(model, glm::radians((GLfloat)glfwGetTime() * -10), glm::normalize(glm::vec3(1.0, 0.0, 1.0))); // Rotates the quad to show normal mapping works in all directions
-    shader.setMatrix4("model", model);
-    renderWall();
+    model = glm::translate(model, glm::vec3(0.0f, 0.0f, 25.0));
+    model = glm::scale(model, glm::vec3(2.5f, 2.5f, 27.5f));
 
+    shader.setMatrix4("model", model);
+    renderCube();
 }
 
 void renderCube()
@@ -588,29 +628,44 @@ void processInput(GLFWwindow* window)
         camera.ProcessMouseMovement(keyboardMovmentSpeed, 0.0f);
 
     // SPACE: gamma correction
-    if (glfwGetKey(window, GLFW_KEY_SPACE) == GLFW_PRESS && !parallaxMappingPressed) {
-        parallaxMappingEnabled = !parallaxMappingEnabled;
-        parallaxMappingPressed = true;
+    //if (glfwGetKey(window, GLFW_KEY_SPACE) == GLFW_PRESS && !parallaxMappingPressed) {
+    //    parallaxMappingEnabled = !parallaxMappingEnabled;
+    //    parallaxMappingPressed = true;
 
-        // [debug] parallax mapping
-        std::cout << "parallax mapping: " << parallaxMappingEnabled << std::endl;
-    }
-    if (glfwGetKey(window, GLFW_KEY_SPACE) == GLFW_RELEASE) {
-        parallaxMappingPressed = false;
-    }
+    //    // [debug] parallax mapping
+    //    std::cout << "parallax mapping: " << parallaxMappingEnabled << std::endl;
+    //}
+    //if (glfwGetKey(window, GLFW_KEY_SPACE) == GLFW_RELEASE) {
+    //    parallaxMappingPressed = false;
+    //}
 
     /*
         Q: height_scale down
         E: height_scale up
     */
+    //if (glfwGetKey(window, GLFW_KEY_Q) == GLFW_PRESS) {
+    //    height_scale = std::max(0.0, height_scale - 0.01);
+    //    std::cout << "height_scale down: " << height_scale << std::endl;
+    //}
+
+    //if (glfwGetKey(window, GLFW_KEY_E) == GLFW_PRESS) {
+    //    height_scale = std::min(1.0, height_scale + 0.01);
+    //    std::cout << "height_scale up: " << height_scale << std::endl;
+    //}
+
+    /*
+        Q: exposure down
+        E: exposure up
+    */
+
     if (glfwGetKey(window, GLFW_KEY_Q) == GLFW_PRESS) {
-        height_scale = std::max(0.0, height_scale - 0.01);
-        std::cout << "height_scale down: " << height_scale << std::endl;
+        exposure = std::max(0.0, exposure - 0.01);
+        std::cout << "exposure down: " << exposure << std::endl;
     }
 
     if (glfwGetKey(window, GLFW_KEY_E) == GLFW_PRESS) {
-        height_scale = std::min(1.0, height_scale + 0.01);
-        std::cout << "height_scale up: " << height_scale << std::endl;
+        exposure = std::min(5.0, exposure + 0.01);
+        std::cout << "exposure up: " << exposure << std::endl;
     }
 }
 
