@@ -82,11 +82,11 @@ float lastY = SCR_HEIGHT / 2.0f;
 //float height_scale = 0.1;
 
 // 全局变量：HDR ToneMapping曝光数值
-float exposure = 1.0f;
-float bloom_threshold = 0.5;
+//float exposure = 1.0f;
+//float bloom_threshold = 0.5;
 
-bool showMultiWindowsEnabled = true;
-bool showMultiWindowsPressed = false;
+//bool showMultiWindowsEnabled = true;
+//bool showMultiWindowsPressed = false;
 
 
 int main()
@@ -136,119 +136,109 @@ int main()
      
     //glEnable(GL_CULL_FACE);
     glEnable(GL_DEPTH_TEST);
-    glEnable(GL_BLEND);
-    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+    //glEnable(GL_BLEND); // 注意：渲染到gBuffer时不能启用GL_BLEND因为你要向rgba中的a通道写东西
+    //glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 
     //glEnable(GL_FRAMEBUFFER_SRGB);
 
     // build and compile our shader program
     // ------------------------------------
 
-    Shader hdrShader("./shaders/5_8_HDR_Bloom/HDRShader.vs", "./shaders/5_8_HDR_Bloom/HDRShader.fs");
-    Shader lightSourceShader("./shaders/5_8_HDR_Bloom/lightSourceShader.vs", "./shaders/5_8_HDR_Bloom/lightSourceShader.fs");
-    Shader blurShader("./shaders/5_8_HDR_Bloom/blurShader.vs", "./shaders/5_8_HDR_Bloom/blurShader.fs");
-    Shader toneMappingShader("./shaders/5_8_HDR_Bloom/toneMappingShader.vs", "./shaders/5_8_HDR_Bloom/toneMappingShader.fs");
+    Shader geometryPassShader("./shaders/5_9_DeferredShading/geometryPassShader.vs", "./shaders/5_9_DeferredShading/geometryPassShader.fs");
+    Shader lightSourceShader("./shaders/5_9_DeferredShading/lightSourceShader.vs", "./shaders/5_9_DeferredShading/lightSourceShader.fs");
+    Shader lightingPassShader("./shaders/5_9_DeferredShading/lightingPassShader.vs", "./shaders/5_9_DeferredShading/lightingPassShader.fs");
 
     // load models & textures
-    setCubeVAO();
-    setPlaneVAO();
     setQuadVAO();
     setLightSourceVAO();
 
-    unsigned int woodTexture = loadTexture("./resources/wood.png", false);
-    unsigned int containerTexture = loadTexture("./resources/container2.png", false);
+    //Model backpack("./resources/models/nanosuit/nanosuit.obj");
+    Model backpack("./resources/models/backpack/backpack.obj");
+    std::cout << "LOAD DONE." << std::endl;
+
+    // object position
+
+    std::vector<glm::vec3> objectPosVec;
+    objectPosVec.emplace_back(-3.0, -0.5, -3.0);
+    objectPosVec.emplace_back(0.0, -0.5, -3.0);
+    objectPosVec.emplace_back(3.0, -0.5, -3.0);
+    objectPosVec.emplace_back(-3.0, -0.5, 0.0);
+    objectPosVec.emplace_back(0.0, -0.5, 0.0);
+    objectPosVec.emplace_back(3.0, -0.5, 0.0);
+    objectPosVec.emplace_back(-3.0, -0.5, 3.0);
+    objectPosVec.emplace_back(0.0, -0.5, 3.0);
+    objectPosVec.emplace_back(3.0, -0.5, 3.0);
 
     // lighting info
     // -------------
-    std::vector<glm::vec3> lightPosVec{
-        {0.0f, 0.5f, 1.5f},
-        {-4.0f, 0.5f, -3.0f},
-        {3.0f, 0.5f, 1.0f},
-        {-0.8f, 2.4f, -1.0f}
-    };
+    const unsigned int NR_LIGHTS = 32;
+    srand(13);
+    std::vector<glm::vec3> lightPosVec;
+    std::vector<glm::vec3> lightColorVec;
 
-    std::vector<glm::vec3> lightColorVec{
-        {5.0f, 5.0f, 5.0f},
-        {10.0f,  0.0f,  0.0f},
-        {0.0f,   0.0f,  15.0f},
-        {0.0f,   5.0f,  0.0f}
-    };
+    for (int i = 0; i < NR_LIGHTS; i++)
+    {
+        lightPosVec.emplace_back(
+            (rand() % 100) / 100.0 * 6.0 - 3.0,
+            (rand() % 100) / 100.0 * 6.0 - 4.0,
+            (rand() % 100) / 100.0 * 6.0 - 3.0
+        );
 
-    // Set up floating point framebuffer to render scene to
-    GLuint hdrFBO;
-    glGenFramebuffers(1, &hdrFBO);
-    glBindFramebuffer(GL_FRAMEBUFFER, hdrFBO);
-
-    GLuint hdrColorMap[2];
-    glGenTextures(2, hdrColorMap);
-
-    for (int i = 0; i < 2; i++) {
-        glBindTexture(GL_TEXTURE_2D, hdrColorMap[i]);
-        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA16F, SCR_WIDTH, SCR_HEIGHT, 0, GL_RGBA,   GL_FLOAT, NULL);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);  // we clamp to the edge as the blur filter would otherwise sample repeated texture values!
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-
-        glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0 + i, GL_TEXTURE_2D, hdrColorMap[i], 0);
+        lightColorVec.emplace_back(
+            (rand() % 100) / 200.0 + 0.5,
+            (rand() % 100) / 200.0 + 0.5,
+            (rand() % 100) / 200.0 + 0.5
+        );
     }
 
-    GLuint hdrDepthRbo;
-    glGenRenderbuffers(1, &hdrDepthRbo);
-    glBindRenderbuffer(GL_RENDERBUFFER, hdrDepthRbo);
+    // Set up floating point framebuffer to render scene to
+    GLuint gBuffer;
+    glGenFramebuffers(1, &gBuffer);
+    glBindFramebuffer(GL_FRAMEBUFFER, gBuffer);
+
+    GLuint gPosition, gNormal, gAlbedoSpec;
+    glGenTextures(1, &gPosition);
+    glBindTexture(GL_TEXTURE_2D, gPosition);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA16F, SCR_WIDTH, SCR_HEIGHT, 0, GL_RGBA, GL_FLOAT, NULL);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, gPosition, 0);
+
+    glGenTextures(1, &gNormal);
+    glBindTexture(GL_TEXTURE_2D, gNormal);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA16F, SCR_WIDTH, SCR_HEIGHT, 0, GL_RGBA, GL_FLOAT, NULL);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT1, GL_TEXTURE_2D, gNormal, 0);
+
+    glGenTextures(1, &gAlbedoSpec);
+    glBindTexture(GL_TEXTURE_2D, gAlbedoSpec);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, SCR_WIDTH, SCR_HEIGHT, 0, GL_RGBA, GL_UNSIGNED_BYTE, NULL);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT2, GL_TEXTURE_2D, gAlbedoSpec, 0);
+
+    unsigned int gBufferAttachments[3]={ GL_COLOR_ATTACHMENT0, GL_COLOR_ATTACHMENT1, GL_COLOR_ATTACHMENT2 };
+    glDrawBuffers(3, gBufferAttachments);
+
+    GLuint rboDepth;
+    glGenRenderbuffers(1, &rboDepth);
+    glBindRenderbuffer(GL_RENDERBUFFER, rboDepth);
     glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH_COMPONENT, SCR_WIDTH, SCR_HEIGHT);
-    glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_RENDERBUFFER, hdrDepthRbo);
-
-    unsigned int hdrFBOAttachments[2] = { GL_COLOR_ATTACHMENT0, GL_COLOR_ATTACHMENT1 };
-    glDrawBuffers(2, hdrFBOAttachments);
-
+    glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_RENDERBUFFER, rboDepth);
     if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE)
         std::cout << "Framebuffer not complete!" << std::endl;
     glBindFramebuffer(GL_FRAMEBUFFER, 0);
 
-    // ping-pong-framebuffer for blurring
-    GLuint pingpongFBO[2];
-    glGenFramebuffers(2, pingpongFBO);
-    GLuint pingpongColorMap[2];
-    glGenTextures(2, pingpongColorMap);
-
-    for (int i = 0; i < 2; i++)
-    {
-        glBindFramebuffer(GL_FRAMEBUFFER, pingpongFBO[i]);
-        glBindTexture(GL_TEXTURE_2D, pingpongColorMap[i]);
-        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA16F, SCR_WIDTH, SCR_HEIGHT, 0, GL_RGBA, GL_FLOAT, NULL);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);  // we clamp to the edge as the blur filter would otherwise sample repeated texture values!
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-
-        glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, pingpongColorMap[i], 0);
-
-        if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE)
-            std::cout << "Framebuffer not complete!" << std::endl;
-    }
-    glBindFramebuffer(GL_FRAMEBUFFER, 0);
-
     // 指定 shader 中 纹理采样器所指向的纹理单元（前面的纹理默认绑定到纹理单元0上）
-    hdrShader.use();
-    hdrShader.setInt("diffuseMap", 0);
 
-    blurShader.use();
-    blurShader.setInt("image", 0);
-
-    toneMappingShader.use();
-    toneMappingShader.setInt("hdrMap", 0);
-    toneMappingShader.setInt("bloomMap", 1);
-
-
-    glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
-
+    // -> geometryPassShader的纹理采样器绑定在调用Model.draw（也即Mesh.draw）时使用
+    lightingPassShader.use();
+    lightingPassShader.setInt("gPosition", 0);
+    lightingPassShader.setInt("gNormal", 1);
+    lightingPassShader.setInt("gAlbedoSpec", 2);
 
     // some prompts
-    std::cout << "SPACE: show multiwindows." << std::endl;
-    std::cout << "QE: exposure." << std::endl;
-    std::cout << "OP: bloom threshold." << std::endl;
-
 
     // render loop
     // -----------
@@ -265,62 +255,78 @@ int main()
 
         // render
         // ------
-
-        // 渲染：场景（在HDR framebuffer中，渲染到两个纹理缓冲中（一个是原场景，一个是只含有高亮度部分（也即主要是光源）的场景））
-        glBindFramebuffer(GL_FRAMEBUFFER, hdrFBO);
+        glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
-        hdrShader.use();
+        // 渲染：场景（gBuffer）
+        glBindFramebuffer(GL_FRAMEBUFFER, gBuffer);
+        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+
+        geometryPassShader.use();
         glm::mat4 cameraProjection = glm::perspective(glm::radians(camera.Zoom), (float)SCR_WIDTH / (float)SCR_HEIGHT, 0.1f, 100.0f);
         glm::mat4 cameraView = camera.GetViewMatrix();
-        hdrShader.setMatrix4("projection", cameraProjection);
-        hdrShader.setMatrix4("view", cameraView);
-        hdrShader.setVec3("viewPos", camera.Position);
+        geometryPassShader.setMatrix4("projection", cameraProjection);
+        geometryPassShader.setMatrix4("view", cameraView);
 
-        hdrShader.setVec3Array("lightPosList", 4, lightPosVec.front());
-        hdrShader.setVec3Array("lightColorList", 4, lightColorVec.front());
+        glm::mat4 model;
+        for (unsigned int i = 0; i < objectPosVec.size(); i++)
+        {
+            model = glm::mat4{ 1.0 };
+            model = glm::translate(model, objectPosVec[i]);
+            model = glm::scale(model, glm::vec3{ 0.5 });
 
-        hdrShader.setFloat("bloomThreshold", bloom_threshold);
+            geometryPassShader.setMatrix4("model", model);
+            backpack.Draw(geometryPassShader);
+        }
 
-        renderScene(hdrShader, {woodTexture, containerTexture}); // TODO: change scene（记住：在其中设置纹理和model矩阵！）
+        glBindFramebuffer(GL_FRAMEBUFFER, 0);
 
-        // -> 渲染光源
+        // 渲染：延迟着色场景
+        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+        lightingPassShader.use();
+        lightingPassShader.setVec3("viewPos", camera.Position);
+
+        const float linear = 0.7f;
+        const float quadratic = 1.8f;
+        for (unsigned int i = 0; i < NR_LIGHTS; i++)
+        {
+            lightingPassShader.setVec3("lights[" + std::to_string(i) + "].Position", lightPosVec[i]);
+            lightingPassShader.setVec3("lights[" + std::to_string(i) + "].Color", lightColorVec[i]);
+
+            lightingPassShader.setFloat("lights[" + std::to_string(i) + "].Linear", linear);
+            lightingPassShader.setFloat("lights[" + std::to_string(i) + "].Quadratic", quadratic);
+
+        }
+
+        glActiveTexture(GL_TEXTURE0);
+        glBindTexture(GL_TEXTURE_2D, gPosition);
+        glActiveTexture(GL_TEXTURE1);
+        glBindTexture(GL_TEXTURE_2D, gNormal);
+        glActiveTexture(GL_TEXTURE2);
+        glBindTexture(GL_TEXTURE_2D, gAlbedoSpec);
+
+        renderQuad();
+
+        // 渲染：光源方块（正向渲染）
+        // -> 先将深度从gBuffer中复制到默认帧缓冲中
+        glBindFramebuffer(GL_READ_FRAMEBUFFER, gBuffer);
+        glBindFramebuffer(GL_DRAW_FRAMEBUFFER, 0);
+        glBlitFramebuffer(0, 0, SCR_WIDTH, SCR_HEIGHT, 0, 0, SCR_WIDTH, SCR_HEIGHT, GL_DEPTH_BUFFER_BIT, GL_NEAREST);
+        glBindFramebuffer(GL_FRAMEBUFFER, 0);
+
+        // -> 再正向渲染光源（注意别再次glClear了）
         lightSourceShader.use();
         lightSourceShader.setMatrix4("projection", cameraProjection);
         lightSourceShader.setMatrix4("view", cameraView);
-        for (int i = 0; i < 4; i++) {
+
+        for (unsigned int i = 0; i < NR_LIGHTS; i++)
+        {
+            //model = glm::mat4{ 1.0 };
+            //model = glm::translate(model, lightPosVec[i]);
+            //model = glm::scale(model, glm::vec3{0.125f});
+            //lightSourceShader.setMatrix4("model", model);
             renderLightSourceWithColor(lightSourceShader, lightPosVec[i], lightColorVec[i]);
         }
-        glBindFramebuffer(GL_FRAMEBUFFER, 0);
-
-        // 渲染：blur（Pingpong Framebuffer）
-        
-        const unsigned int blur_amount = 10;
-        blurShader.use();
-        for (unsigned int i = 0; i < blur_amount; i++)
-        {
-            bool horizontal = ((i % 2) == 0);
-            bool first_iteration = (i == 0);
-
-            glBindFramebuffer(GL_FRAMEBUFFER, pingpongFBO[horizontal]); // output
-            blurShader.setBool("horizontal", horizontal);
-            glBindTexture(GL_TEXTURE_2D, first_iteration ? hdrColorMap[1] : pingpongColorMap[!horizontal]); // input
-            renderQuad();
-        }
-        glBindFramebuffer(GL_FRAMEBUFFER, 0);
-
-        // 渲染：后处理tone mapping
-        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-        toneMappingShader.use();
-        toneMappingShader.setFloat("exposure", exposure);
-        toneMappingShader.setBool("showMultiWindowsEnabled", showMultiWindowsEnabled);
-
-        glActiveTexture(GL_TEXTURE0);
-        glBindTexture(GL_TEXTURE_2D, hdrColorMap[0]);
-        glActiveTexture(GL_TEXTURE1);
-        glBindTexture(GL_TEXTURE_2D, pingpongColorMap[(blur_amount - 1) % 2 == 0]);
-
-        renderQuad();
 
         // glfw: swap buffers and poll IO events (keys pressed/released, mouse moved etc.)
         // -------------------------------------------------------------------------------
@@ -791,40 +797,40 @@ void processInput(GLFWwindow* window)
         E: exposure up
     */
 
-    if (glfwGetKey(window, GLFW_KEY_Q) == GLFW_PRESS) {
-        exposure = std::max(0.0, exposure - 0.01);
-        std::cout << "exposure down: " << exposure << std::endl;
-    }
+    //if (glfwGetKey(window, GLFW_KEY_Q) == GLFW_PRESS) {
+    //    exposure = std::max(0.0, exposure - 0.01);
+    //    std::cout << "exposure down: " << exposure << std::endl;
+    //}
 
-    if (glfwGetKey(window, GLFW_KEY_E) == GLFW_PRESS) {
-        exposure = std::min(5.0, exposure + 0.01);
-        std::cout << "exposure up: " << exposure << std::endl;
-    }
-    /*
-        O: exposure down
-        P: exposure up
-    */
-    if (glfwGetKey(window, GLFW_KEY_O) == GLFW_PRESS) {
-        bloom_threshold = std::max(0.0, bloom_threshold - 0.01);
-        std::cout << "bloom_threshold down: " << bloom_threshold << std::endl;
-    }
+    //if (glfwGetKey(window, GLFW_KEY_E) == GLFW_PRESS) {
+    //    exposure = std::min(5.0, exposure + 0.01);
+    //    std::cout << "exposure up: " << exposure << std::endl;
+    //}
+    ///*
+    //    O: exposure down
+    //    P: exposure up
+    //*/
+    //if (glfwGetKey(window, GLFW_KEY_O) == GLFW_PRESS) {
+    //    bloom_threshold = std::max(0.0, bloom_threshold - 0.01);
+    //    std::cout << "bloom_threshold down: " << bloom_threshold << std::endl;
+    //}
 
-    if (glfwGetKey(window, GLFW_KEY_P) == GLFW_PRESS) {
-        bloom_threshold = std::min(2.0, bloom_threshold + 0.01);
-        std::cout << "bloom_threshold up: " << bloom_threshold << std::endl;
-    }
+    //if (glfwGetKey(window, GLFW_KEY_P) == GLFW_PRESS) {
+    //    bloom_threshold = std::min(2.0, bloom_threshold + 0.01);
+    //    std::cout << "bloom_threshold up: " << bloom_threshold << std::endl;
+    //}
 
-    // SPACE: multi windows
-    if (glfwGetKey(window, GLFW_KEY_SPACE) == GLFW_PRESS && !showMultiWindowsPressed) {
-        showMultiWindowsEnabled = !showMultiWindowsEnabled;
-        showMultiWindowsPressed = true;
+    //// SPACE: multi windows
+    //if (glfwGetKey(window, GLFW_KEY_SPACE) == GLFW_PRESS && !showMultiWindowsPressed) {
+    //    showMultiWindowsEnabled = !showMultiWindowsEnabled;
+    //    showMultiWindowsPressed = true;
 
-        // [debug] multi windows
-        std::cout << "showMultiWindowsEnabled: " << showMultiWindowsEnabled << std::endl;
-    }
-    if (glfwGetKey(window, GLFW_KEY_SPACE) == GLFW_RELEASE) {
-        showMultiWindowsPressed = false;
-    }
+    //    // [debug] multi windows
+    //    std::cout << "showMultiWindowsEnabled: " << showMultiWindowsEnabled << std::endl;
+    //}
+    //if (glfwGetKey(window, GLFW_KEY_SPACE) == GLFW_RELEASE) {
+    //    showMultiWindowsPressed = false;
+    //}
 }
 
 // glfw: whenever the window size changed (by OS or user resize) this callback function executes

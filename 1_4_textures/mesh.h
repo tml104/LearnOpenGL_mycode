@@ -78,7 +78,7 @@ public:
                 number = std::to_string(heightNr++); // transfer unsigned int to string
 
             // now set the sampler to the correct texture unit
-            glUniform1i(glGetUniformLocation(shader.ID, (name + number).c_str()), i); // 这里绑定的只是i，和纹理对象的id没有什么联系，和着色器里出现的sampler2D的顺序也没什么联系（因为只认变量名）。不过这里要注意这个i要和前面的glActiveTexture对应
+            glUniform1i(glGetUniformLocation(shader.ID, (name + number).c_str()), i); // 这里绑定的只是i（纹理单元编号），和纹理对象的id没有什么联系，和着色器里出现的sampler2D的顺序也没什么联系（因为只认变量名）。不过这里要注意这个i要和前面的glActiveTexture对应
             // and finally bind the texture
             glBindTexture(GL_TEXTURE_2D, textures[i].id);
         }
