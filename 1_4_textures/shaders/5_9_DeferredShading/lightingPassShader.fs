@@ -15,6 +15,7 @@ struct Light{
 
     float Linear;
     float Quadratic;
+    float Radius;
 };
 
 uniform Light lights[NR_LIGHTS];
@@ -23,7 +24,7 @@ uniform vec3 viewPos;
 float GetAmbientStrength()
 {
     //ambient
-    return 0.2;
+    return 0.0;
 }
 
 vec3 GetDiffuseStrength(vec3 normal, vec3 fragPos, vec3 lightPos, vec3 lightColor)
@@ -69,15 +70,20 @@ void main()
 
     //FragColor = vec4(vec3(Specular), 1.0);
 
-    //ambient
+    //ambient (low cost)
     vec3 res = GetAmbientStrength() * Diffuse;
+
     for(int i=0;i<NR_LIGHTS; i++)
     {
-        float attenuation = GetAttenuation(FragPos, lights[i].Position, lights[i].Linear, lights[i].Quadratic);
-        // diffuse
-        res += GetDiffuseStrength(Normal, FragPos, lights[i].Position, lights[i].Color) * Diffuse * attenuation;
-        // specular
-        res += GetSpecularStrength(Normal, FragPos, lights[i].Position, lights[i].Color, viewPos) * Specular * attenuation;
+        float distance_to_light = length(lights[i].Position - FragPos);
+        if(distance_to_light<lights[i].Radius)
+        {
+            float attenuation = GetAttenuation(FragPos, lights[i].Position, lights[i].Linear, lights[i].Quadratic);
+            // diffuse
+            res += GetDiffuseStrength(Normal, FragPos, lights[i].Position, lights[i].Color) * Diffuse * attenuation;
+            // specular
+            res += GetSpecularStrength(Normal, FragPos, lights[i].Position, lights[i].Color, viewPos) * Specular * attenuation;
+        }
     }
 
     FragColor = vec4(res, 1.0);

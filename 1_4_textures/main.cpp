@@ -47,7 +47,7 @@ void renderLightSourceWithColor(const Shader& shader, const glm::vec3& lightPos,
 // settings
 const unsigned int SCR_WIDTH = 1920;
 const unsigned int SCR_HEIGHT = 1080;
-const unsigned int SCR_X_POS = 200;
+const unsigned int SCR_X_POS = 400;
 const unsigned int SCR_Y_POS = 200;
 
 // 全局变量2：用于相机系统
@@ -286,6 +286,7 @@ int main()
         lightingPassShader.use();
         lightingPassShader.setVec3("viewPos", camera.Position);
 
+        const float constant = 1.0f;
         const float linear = 0.7f;
         const float quadratic = 1.8f;
         for (unsigned int i = 0; i < NR_LIGHTS; i++)
@@ -296,6 +297,10 @@ int main()
             lightingPassShader.setFloat("lights[" + std::to_string(i) + "].Linear", linear);
             lightingPassShader.setFloat("lights[" + std::to_string(i) + "].Quadratic", quadratic);
 
+            // 使用最大分量求解光源
+            const float maxBrightness = std::max(std::max(lightColorVec[i].r, lightColorVec[i].g), lightColorVec[i].b);
+            float radius = (- linear + std::sqrt(linear * linear - 4 * quadratic * (constant - (256.0 / 5.0) * maxBrightness))) / (2.0 * quadratic);
+            lightingPassShader.setFloat("lights[" + std::to_string(i) + "].Radius", radius);
         }
 
         glActiveTexture(GL_TEXTURE0);
