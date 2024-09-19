@@ -13,6 +13,15 @@
       <UniqueIdentifier>{67DA6AB6-F800-4c08-8B7A-83BB121AAD01}</UniqueIdentifier>
       <Extensions>rc;ico;cur;bmp;dlg;rc2;rct;bin;rgs;gif;jpg;jpeg;jpe;resx;tiff;tif;png;wav;mfcribbon-ms</Extensions>
     </Filter>
+    <Filter Include="头文件\Other">
+      <UniqueIdentifier>{ae3d50d0-0dd4-4271-8f66-e6bef55f069a}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="头文件\LearnOpenGL">
+      <UniqueIdentifier>{a3d5bd7c-c218-4804-8d5b-6a1f5c354337}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="MyRenderEngine">
+      <UniqueIdentifier>{b8c2808e-4905-4d69-b317-e63c40150ec3}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="main.cpp">
@@ -23,20 +32,23 @@
     </ClCompile>
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="shader_s.h">
-      <Filter>头文件</Filter>
-    </ClInclude>
-    <ClInclude Include="stb_image.h">
-      <Filter>头文件</Filter>
-    </ClInclude>
     <ClInclude Include="camera.h">
-      <Filter>头文件</Filter>
+      <Filter>头文件\LearnOpenGL</Filter>
     </ClInclude>
     <ClInclude Include="mesh.h">
-      <Filter>头文件</Filter>
+      <Filter>头文件\LearnOpenGL</Filter>
     </ClInclude>
     <ClInclude Include="model.h">
-      <Filter>头文件</Filter>
+      <Filter>头文件\LearnOpenGL</Filter>
+    </ClInclude>
+    <ClInclude Include="shader_s.h">
+      <Filter>头文件\LearnOpenGL</Filter>
+    </ClInclude>
+    <ClInclude Include="stb_image.h">
+      <Filter>头文件\LearnOpenGL</Filter>
+    </ClInclude>
+    <ClInclude Include="MyRenderEngine.hpp">
+      <Filter>MyRenderEngine</Filter>
     </ClInclude>
   </ItemGroup>
 </Project>
