@@ -123,8 +123,8 @@ int main()
     glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, 8 * sizeof(float), (void*)(6 * sizeof(float)));
     glBindVertexArray(0);
 
-    unsigned int floorTexture = loadTexture("D:\\code\\vs\\first_glfw\\1_4_textures\\resources\\wood.png", false);
-    unsigned int floorTextureGammaCorrected = loadTexture("D:\\code\\vs\\first_glfw\\1_4_textures\\resources\\wood.png", true);
+    unsigned int floorTexture = loadTexture("./resources/wood.png", false);
+    unsigned int floorTextureGammaCorrected = loadTexture("./resources/wood.png", true);
 
     // 指定 shader 中 纹理采样器所指向的纹理单元（前面的纹理默认绑定到纹理单元0上）
     gammaCorrectionShader.use();
