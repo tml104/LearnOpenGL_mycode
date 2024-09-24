@@ -22,8 +22,8 @@ unsigned int loadTexture(char const* path);
 unsigned int loadCubemap(vector<std::string> faces);
 
 // settings
-const unsigned int SCR_WIDTH = 800;
-const unsigned int SCR_HEIGHT = 600;
+const unsigned int SCR_WIDTH = 1920;
+const unsigned int SCR_HEIGHT = 1080;
 
 // 全局变量2：用于相机系统
 Camera camera(glm::vec3(50.0f, 10.0f, 50.0f));
@@ -91,8 +91,8 @@ int main()
     Shader antiAliasingPostShader("./shaders/4_11_AntiAliasing/antiAliasingPostShader.vs", "./shaders/4_11_AntiAliasing/antiAliasingPostShader.fs");
 
     // load models
-    Model rock("D:/code/learnopengl_resources/rock/rock.obj");
-    Model planet("D:/code/learnopengl_resources/planet/planet.obj");
+    Model rock("C:/hqh/code/learnopengl_resources/rock/rock.obj");
+    Model planet("C:/hqh/code/learnopengl_resources/planet/planet.obj");
 
     // -> generate a large list of semi-random model transformation matrices
     auto generate_model_matrices = [&](unsigned int amount) -> glm::mat4* {
