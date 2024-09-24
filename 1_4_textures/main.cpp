@@ -122,7 +122,7 @@ int main()
     // load models & textures
     setCubeVAO();
 
-    unsigned int woodTexture = loadTexture("D:\\code\\vs\\first_glfw\\1_4_textures\\resources\\wood.png", false);
+    unsigned int woodTexture = loadTexture("./resources/wood.png", false);
 
     // create depth texture & framebuffer
     const GLuint SHADOW_WIDTH = 1024, SHADOW_HEIGHT = 1024; // 注意：宽高必须相等
