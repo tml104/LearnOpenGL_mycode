@@ -25,6 +25,9 @@ namespace MyRenderEngine {
 	// Configs
 	const glm::vec4 GREEN_BACKGROUND{ 0.2f, 0.3f, 0.3f, 1.0f };
 	const glm::vec4 BLACK_BACKGROUND{ 0.0f, 0.0f, 0.0f, 0.0f };
+
+	const glm::vec3 CAMERA_INIT_POS{ 0.0f, 0.0f, 5.0f };
+
 	const unsigned int SCR_WIDTH = 1024;
 	const unsigned int SCR_HEIGHT = 768;
 	const unsigned int SCR_X_POS = 200;
@@ -315,7 +318,6 @@ namespace MyRenderEngine {
 			glBindTexture(GL_TEXTURE_2D, 0);
 
 			// depthTexture
-			unsigned int depthTexture;
 			glGenTextures(1, &depthTexture);
 			glBindTexture(GL_TEXTURE_2D, depthTexture);
 			glTexImage2D(GL_TEXTURE_2D, 0, GL_DEPTH_COMPONENT, SCR_WIDTH, SCR_HEIGHT,
@@ -334,7 +336,6 @@ namespace MyRenderEngine {
 
 			// set up attachments for transparent framebuffer
 			// accumTexture
-			unsigned int accumTexture;
 			glGenTextures(1, &accumTexture);
 			glBindTexture(GL_TEXTURE_2D, accumTexture);
 			glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA16F, SCR_WIDTH, SCR_HEIGHT, 0, GL_RGBA, GL_HALF_FLOAT, NULL);
@@ -343,7 +344,6 @@ namespace MyRenderEngine {
 			glBindTexture(GL_TEXTURE_2D, 0);
 
 			// revealTexture
-			unsigned int revealTexture;
 			glGenTextures(1, &revealTexture);
 			glBindTexture(GL_TEXTURE_2D, revealTexture);
 			glTexImage2D(GL_TEXTURE_2D, 0, GL_R8, SCR_WIDTH, SCR_HEIGHT, 0, GL_RED, GL_FLOAT, NULL); // 注意这里因为只有一个通道所以会有所不同！
@@ -403,9 +403,9 @@ namespace MyRenderEngine {
 
 				// render
 				// -----
-				//int display_w, display_h;
-				//glfwGetFramebufferSize(window, &display_w, &display_h);
-				//glViewport(0, 0, display_w, display_h);
+				int display_w, display_h;
+				glfwGetFramebufferSize(window, &display_w, &display_h);
+				glViewport(0, 0, display_w, display_h);
 
 				glm::mat4 projectionMatrix = glm::perspective(glm::radians(camera.Zoom), static_cast<float>(screenWidth) / static_cast<float>(screenHeight), camera.Near, camera.Far);
 				glm::mat4 viewMatrix = camera.GetViewMatrix();
@@ -494,7 +494,7 @@ namespace MyRenderEngine {
 		}
 
 		MyRenderEngine() :
-			camera(glm::vec3{ 1.0f }),
+			camera(CAMERA_INIT_POS),
 			mouseController(camera),
 			keyboardController(camera),
 			deltaTime(0.0f),
@@ -670,7 +670,7 @@ namespace MyRenderEngine {
 				isOpaque = true;
 			}
 			else if (color_flag == 2) { // GREEN （透明）
-				modelMatrix = CalculateModelMatrix(glm::vec3(0.0f, 0.0f, 0.0f));
+				modelMatrix = CalculateModelMatrix(glm::vec3(0.0f, 0.0f, 3.0f));
 				renderColor = glm::vec4(0.0, 1.0, 0.0, 0.5);
 				isOpaque = false;
 			}
