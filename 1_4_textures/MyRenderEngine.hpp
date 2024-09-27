@@ -543,7 +543,8 @@ namespace MyRenderEngine {
 			glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 4);
 			glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 2);
 			glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
-			//glfwWindowHint(GLFW_SAMPLES, 4);
+			glfwWindowHint(GLFW_SAMPLES, 4);
+
 
 #ifdef __APPLE__
 			glfwWindowHint(GLFW_OPENGL_FORWARD_COMPAT, GL_TRUE);
@@ -586,6 +587,7 @@ namespace MyRenderEngine {
 			// tell GLFW to capture our mouse
 			glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
 
+
 			// glad: load all OpenGL function pointers
 			// ---------------------------------------
 			if (!gladLoadGLLoader((GLADloadproc)glfwGetProcAddress))
@@ -593,6 +595,8 @@ namespace MyRenderEngine {
 				std::cout << "Failed to initialize GLAD" << std::endl;
 				return -1;
 			}
+
+			glEnable(GL_MULTISAMPLE);
 
 			return 0;
 		}
