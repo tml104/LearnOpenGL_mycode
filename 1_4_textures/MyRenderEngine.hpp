@@ -15,10 +15,33 @@
 
 #include "shader_s.h"
 #include "camera.h"
+//#include "stb_image.h"
 
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtc/type_ptr.hpp>
+
+GLenum glCheckError_(const char *file, int line)
+{
+    GLenum errorCode;
+    while ((errorCode = glGetError()) != GL_NO_ERROR)
+    {
+        std::string error;
+        switch (errorCode)
+        {
+            case GL_INVALID_ENUM:                  error = "INVALID_ENUM"; break;
+            case GL_INVALID_VALUE:                 error = "INVALID_VALUE"; break;
+            case GL_INVALID_OPERATION:             error = "INVALID_OPERATION"; break;
+            case GL_STACK_OVERFLOW:                error = "STACK_OVERFLOW"; break;
+            case GL_STACK_UNDERFLOW:               error = "STACK_UNDERFLOW"; break;
+            case GL_OUT_OF_MEMORY:                 error = "OUT_OF_MEMORY"; break;
+            case GL_INVALID_FRAMEBUFFER_OPERATION: error = "INVALID_FRAMEBUFFER_OPERATION"; break;
+        }
+        std::cout << error << " | " << file << " (" << line << ")" << std::endl;
+    }
+    return errorCode;
+}
+#define glCheckError() glCheckError_(__FILE__, __LINE__) 
 
 namespace MyRenderEngine {
 
@@ -35,6 +58,92 @@ namespace MyRenderEngine {
 
 	const glm::vec4 ZERO_VEC(0.0f);
 	const glm::vec4 ONE_VEC(1.0f);
+
+	// utility function for loading a 2D texture from file
+// 绑定纹理对象与实际数据，并返回纹理对象ID以供随后激活纹理单元并将纹理对象与纹理单元绑定
+// ---------------------------------------------------
+	unsigned int loadTexture(char const* path, bool gammaCorrection) {
+		unsigned int textureID;
+		glGenTextures(1, &textureID);
+
+		int width, height, nrComponents;
+		unsigned char* data = stbi_load(path, &width, &height, &nrComponents, 0);
+
+		if (data) {
+			GLenum dataFormat;
+			GLenum internalFormat;
+			if (nrComponents == 1) {
+				internalFormat = dataFormat = GL_RED;
+			}
+			else if (nrComponents == 3) {
+				internalFormat = gammaCorrection ? GL_SRGB : GL_RGB;
+				dataFormat = GL_RGB;
+			}
+			else if (nrComponents == 4) {
+				internalFormat = gammaCorrection ? GL_SRGB_ALPHA : GL_RGBA;
+				dataFormat = GL_RGBA;
+			}
+
+			// 绑定：绑定纹理对象与实际数据
+			glBindTexture(GL_TEXTURE_2D, textureID);
+			glTexImage2D(GL_TEXTURE_2D, 0, internalFormat, width, height, 0, dataFormat, GL_UNSIGNED_BYTE, data);
+			glGenerateMipmap(GL_TEXTURE_2D);
+
+			// 纹理环绕方式（与绑定之间的顺序随意）
+			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, dataFormat == GL_RGBA ? GL_CLAMP_TO_EDGE : GL_REPEAT); // for this tutorial: use GL_CLAMP_TO_EDGE to prevent semi-transparent borders. Due to interpolation it takes texels from next repeat 
+			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, dataFormat == GL_RGBA ? GL_CLAMP_TO_EDGE : GL_REPEAT);
+			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
+			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+
+			stbi_image_free(data);
+
+		}
+		else {
+			std::cout << "Texture failed to load at path:" << path << std::endl;
+			stbi_image_free(data);
+		}
+
+		return textureID;
+	}
+
+	// loads a cubemap texture from 6 individual texture faces
+	// order:
+	// +X (right)
+	// -X (left)
+	// +Y (top)
+	// -Y (bottom)
+	// +Z (front) 
+	// -Z (back)
+	// -------------------------------------------------------
+	unsigned int loadCubemap(vector<std::string> faces)
+	{
+		unsigned int textureID;
+		glGenTextures(1, &textureID);
+		glBindTexture(GL_TEXTURE_CUBE_MAP, textureID);
+
+		int width, height, nrChannels;
+		for (unsigned int i = 0; i < faces.size(); i++)
+		{
+			unsigned char* data = stbi_load(faces[i].c_str(), &width, &height, &nrChannels, 0);
+			if (data)
+			{
+				glTexImage2D(GL_TEXTURE_CUBE_MAP_POSITIVE_X + i, 0, GL_RGB, width, height, 0, GL_RGB, GL_UNSIGNED_BYTE, data);
+				stbi_image_free(data);
+			}
+			else
+			{
+				std::cout << "Cubemap texture failed to load at path: " << faces[i] << std::endl;
+				stbi_image_free(data);
+			}
+		}
+		glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+		glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+		glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+		glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+		glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_WRAP_R, GL_CLAMP_TO_EDGE);
+
+		return textureID;
+	}
 
 	/*
 		由MyRenderEngine传入IRenderable中
@@ -58,8 +167,6 @@ namespace MyRenderEngine {
 			const RenderInfo& renderInfo
 		) = 0;
 		virtual ~IRenderable() {};
-
-		virtual glm::mat4 GetModelMatrix() = 0;
 		virtual RenderableInfo GetRenderableInfo() = 0;
 	};
 
@@ -541,10 +648,10 @@ namespace MyRenderEngine {
 		int InitWindow(GLFWwindow*& window) {
 			glfwInit();
 			glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 4);
-			glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 2);
+			glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 6);
 			glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
-			glfwWindowHint(GLFW_SAMPLES, 4);
-
+			//glfwWindowHint(GLFW_SAMPLES, 4); // 注意因为这里用了别的framebuffer所以这里没有意义
+			glfwWindowHint(GLFW_OPENGL_DEBUG_CONTEXT, GL_TRUE);
 
 #ifdef __APPLE__
 			glfwWindowHint(GLFW_OPENGL_FORWARD_COMPAT, GL_TRUE);
@@ -596,93 +703,167 @@ namespace MyRenderEngine {
 				return -1;
 			}
 
-			glEnable(GL_MULTISAMPLE);
+			//glEnable(GL_MULTISAMPLE);
 
 			return 0;
 		}
 	};
 
-
-	class Quad : public IRenderable {
+	class InstancedGlass : public IRenderable {
 	public:
 
-		unsigned int quadVAO;
-		unsigned int quadVBO;
+		unsigned int meshSize; // 单个模型的三角面片数量，在渲染过程中的drawcall数量应该等于此数量
+		unsigned int indicesSize; // 顶点数量（这个是非变化的那个，和正常渲染一个三角形时要填写的顶点数量一样，这里应该是6）
+		unsigned int amount;
+		unsigned int modelMatricesVBO;
+		unsigned int VAO; // VAO，其数量应该和三角面片数量相同
+		unsigned int VBO;
 
-		int verticesCount;
-
-		glm::mat4 modelMatrix;
-		glm::vec4 renderColor;
-
-		int colorFlag;
-		bool isOpaque;
-
-		Shader* shader;
+		unsigned int textureTransparent;
+		
+		glm::mat4* modelMatrices;
+		Shader* instancedGlassShader;
 
 		void Render(const RenderInfo& renderInfo) override {
-			shader->use();
+			instancedGlassShader->use();
 
-			shader->setMatrix4("projection", renderInfo.projection_matrix);
-			shader->setMatrix4("view", renderInfo.view_matrix);
-			shader->setMatrix4("model", modelMatrix);
+			instancedGlassShader->setMatrix4("projection", renderInfo.projection_matrix);
+			instancedGlassShader->setMatrix4("view", renderInfo.view_matrix);
 
-			shader->setVec4("color", renderColor);
+			glActiveTexture(GL_TEXTURE0);
+			glBindTexture(GL_TEXTURE_2D, textureTransparent);
 
-			glBindVertexArray(quadVAO);
-			glDrawArrays(GL_TRIANGLES, 0, verticesCount);
+			glCheckError();
+
+			for (unsigned int i = 0; i < meshSize; i++) { // 实际上只做了一次……
+				glBindVertexArray(VAO);
+				glCheckError();
+
+				
+				//glDrawElementsInstanced(GL_TRIANGLES, indicesSize, GL_UNSIGNED_INT, 0, amount);
+				glDrawArraysInstanced(GL_TRIANGLES, 0, indicesSize, amount);
+				glCheckError();
+
+
+				glBindVertexArray(0);
+			}
 		}
 
-		glm::mat4 GetModelMatrix() override {
-			return modelMatrix;
+		RenderableInfo GetRenderableInfo() {
+			return { false }; // isOpaque
 		}
 
-		RenderableInfo GetRenderableInfo() override {
-			return { isOpaque };
-		}
+		InstancedGlass(unsigned int amount, Shader* shader): instancedGlassShader(shader), amount(amount){
 
-		Quad(int color_flag, Shader* shader) : colorFlag(color_flag), shader(shader) {
-			static float quadVertices[] = {
-				// positions        // uv
-				-1.0f, -1.0f, 0.0f,	0.0f, 0.0f,
-				 1.0f, -1.0f, 0.0f, 1.0f, 0.0f,
-				 1.0f,  1.0f, 0.0f, 1.0f, 1.0f,
+			indicesSize = 6;
+			float transparentVertices[] = {
+				// positions         // texture Coords (swapped y coordinates because texture is flipped upside down)
+				0.0f,  0.5f,  0.0f,  0.0f,  0.0f,
+				0.0f, -0.5f,  0.0f,  0.0f,  1.0f,
+				1.0f, -0.5f,  0.0f,  1.0f,  1.0f,
 
-				 1.0f,  1.0f, 0.0f, 1.0f, 1.0f,
-				-1.0f,  1.0f, 0.0f, 0.0f, 1.0f,
-				-1.0f, -1.0f, 0.0f, 0.0f, 0.0f
+				0.0f,  0.5f,  0.0f,  0.0f,  0.0f,
+				1.0f, -0.5f,  0.0f,  1.0f,  1.0f,
+				1.0f,  0.5f,  0.0f,  1.0f,  0.0f
 			};
 
-			verticesCount = 6;
+			meshSize = 1;
+			modelMatrices = GenerateModelMatrices(amount);
 
-			glGenVertexArrays(1, &quadVAO);
-			glGenBuffers(1, &quadVBO);
+			glCheckError();
 
-			glBindVertexArray(quadVAO);
-				glBindBuffer(GL_ARRAY_BUFFER, quadVBO);
-				glBufferData(GL_ARRAY_BUFFER, sizeof(quadVertices), quadVertices, GL_STATIC_DRAW);
+			glGenVertexArrays(1, &VAO);
+			glGenBuffers(1, &VBO);
+			glGenBuffers(1, &modelMatricesVBO);
 
+			glCheckError();
+
+
+			glBindVertexArray(VAO);
+				
+				glBindBuffer(GL_ARRAY_BUFFER, VBO);
+
+				glBufferData(GL_ARRAY_BUFFER, sizeof(transparentVertices), transparentVertices, GL_STATIC_DRAW);
 				glEnableVertexAttribArray(0);
 				glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 5 * sizeof(float), (void*)0);
 				glEnableVertexAttribArray(1);
 				glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 5 * sizeof(float), (void*)(3 * sizeof(float)));
+
+				glCheckError();
+
+
+				// -> 为4个顶点属性 (layout (location = 3) mat4) 设置属性指针，并将它们设置为实例化数组
+				// 此处预留0~2号属性槽位，3~6会被用于装载4个vec4
+				glBindBuffer(GL_ARRAY_BUFFER, modelMatricesVBO); // 后面那个mesh循环结束之前别解绑（此处是定义VBO）
+				glBufferData(GL_ARRAY_BUFFER, amount * sizeof(glm::mat4), &modelMatrices[0], GL_STATIC_DRAW);
+
+				glCheckError();
+
+				GLsizei vec4Size = sizeof(glm::vec4);
+
+				glEnableVertexAttribArray(2);
+				glVertexAttribPointer(2, 4, GL_FLOAT, GL_FALSE, 4 * vec4Size, (void*)0);
+				glEnableVertexAttribArray(3);
+				glVertexAttribPointer(3, 4, GL_FLOAT, GL_FALSE, 4 * vec4Size, (void*)(vec4Size));
+				glEnableVertexAttribArray(4);
+				glVertexAttribPointer(4, 4, GL_FLOAT, GL_FALSE, 4 * vec4Size, (void*)(2 * vec4Size));
+				glEnableVertexAttribArray(5);
+				glVertexAttribPointer(5, 4, GL_FLOAT, GL_FALSE, 4 * vec4Size, (void*)(3 * vec4Size));
+
+				glVertexAttribDivisor(2, 1);
+				glVertexAttribDivisor(3, 1);
+				glVertexAttribDivisor(4, 1);
+				glVertexAttribDivisor(5, 1);
+
+				glCheckError();
+
+
 			glBindVertexArray(0);
 
-			// 通过颜色决定modelMatrix矩阵的位置情况
-			if (color_flag == 1) { // RED （不透明）
-				modelMatrix = CalculateModelMatrix(glm::vec3(0.0f, 0.0f, 1.0f));
-				renderColor = glm::vec4(1.0, 0.0, 0.0, 1.0);
-				isOpaque = true;
+			textureTransparent = loadTexture("./resources/blending_transparent_window.png", false);
+
+			glCheckError();
+		}
+
+		~InstancedGlass() {
+			delete[] modelMatrices;
+		}
+
+	private:
+
+		glm::mat4* GenerateModelMatrices(unsigned int amount) {
+			glm::mat4* modelMatrices = new glm::mat4[amount];
+
+			srand(static_cast<unsigned int>(glfwGetTime())); // initialize random seed
+			float radius = 10.0;
+			float offset = 0.25f;
+
+			for (unsigned int i = 0; i < amount; i++)
+			{
+				glm::mat4 model = glm::mat4(1.0f);
+				// 1. translation: displace along circle with 'radius' in range [-offset, offset]
+				float angle = (float)i / (float)amount * 360.0f;
+				float displacement = (rand() % (int)(2 * offset * 100)) / 100.0f - offset;
+				float x = sin(angle) * radius + displacement;
+				displacement = (rand() % (int)(2 * offset * 100)) / 100.0f - offset;
+				float y = displacement * 0.4f; // keep height of asteroid field smaller compared to width of x and z
+				displacement = (rand() % (int)(2 * offset * 100)) / 100.0f - offset;
+				float z = cos(angle) * radius + displacement;
+				model = glm::translate(model, glm::vec3(x, y, z));
+
+				// 2. scale: Scale between 0.05 and 0.25f
+				float scale = static_cast<float>((rand() % 20) / 100.0 + 0.05);
+				model = glm::scale(model, glm::vec3(scale));
+
+				// 3. rotation: add random rotation around a (semi)randomly picked rotation axis vector
+				float rotAngle = static_cast<float>((rand() % 360));
+				model = glm::rotate(model, rotAngle, glm::vec3(0.4f, 0.6f, 0.8f));
+
+				// 4. now add to list of matrices
+				modelMatrices[i] = model;
 			}
-			else if (color_flag == 2) { // GREEN （透明）
-				modelMatrix = CalculateModelMatrix(glm::vec3(0.0f, 0.0f, 3.0f));
-				renderColor = glm::vec4(0.0, 1.0, 0.0, 0.5);
-				isOpaque = false;
-			}
-			else if (color_flag == 3) { // BLUE （透明）
-				modelMatrix = CalculateModelMatrix(glm::vec3(0.0f, 0.0f, 2.0f));
-				renderColor = glm::vec4(0.0, 0.0, 1.0, 0.5);
-				isOpaque = false;
-			}
+
+			return modelMatrices;
 		}
 	};
 
