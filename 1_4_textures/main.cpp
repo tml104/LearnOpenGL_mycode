@@ -21,24 +21,35 @@ int main()
 {
     MyRenderEngine::MyRenderEngine myRenderEngine;
 
-    Shader solidShader("./shaders/OIT_Weighted_Blended/solid.vs", "./shaders/OIT_Weighted_Blended/solid.fs");
-    Shader transparentShader("./shaders/OIT_Weighted_Blended/transparent.vs", "./shaders/OIT_Weighted_Blended/transparent.fs");
-    Shader compositeShader("./shaders/OIT_Weighted_Blended/composite.vs", "./shaders/OIT_Weighted_Blended/composite.fs");
-    Shader screenShader("./shaders/OIT_Weighted_Blended/screen.vs", "./shaders/OIT_Weighted_Blended/screen.fs");
+    Shader pbrShader("./shaders/6_2_PBR/pbr.vs", "./shaders/6_2_PBR/pbr.fs");
 
-    myRenderEngine.SetCompositeShader(&compositeShader);
-    myRenderEngine.SetScreenShader(&screenShader);
+    //std::shared_ptr<MyRenderEngine::Quad> redQuad = std::make_shared<MyRenderEngine::Quad>(1, &(solidShader));
+    //std::shared_ptr<MyRenderEngine::Quad> greenQuad = std::make_shared<MyRenderEngine::Quad>(2, &(transparentShader));
+    //std::shared_ptr<MyRenderEngine::Quad> blueQuad = std::make_shared<MyRenderEngine::Quad>(3, &(transparentShader));
 
-    std::shared_ptr<MyRenderEngine::Quad> redQuad = std::make_shared<MyRenderEngine::Quad>(1, &(solidShader));
-    std::shared_ptr<MyRenderEngine::Quad> greenQuad = std::make_shared<MyRenderEngine::Quad>(2, &(transparentShader));
-    std::shared_ptr<MyRenderEngine::Quad> blueQuad = std::make_shared<MyRenderEngine::Quad>(3, &(transparentShader));
+    const int SPHERE_ROW_SIZE = 10;
+    const int SPHERE_COL_SIZE = 10;
 
-    myRenderEngine.AddRenderable(redQuad);
-    myRenderEngine.AddRenderable(greenQuad);
-    myRenderEngine.AddRenderable(blueQuad);
+    for (int i = 0; i < SPHERE_ROW_SIZE; i++) {
+        for (int j = 0; j < SPHERE_COL_SIZE; j++) {
+
+            auto sphere = std::make_shared<MyRenderEngine::Sphere>(i,j, SPHERE_ROW_SIZE, SPHERE_COL_SIZE,&pbrShader);
+            myRenderEngine.AddRenderable(sphere);
+        }
+    }
+
+    // Add lights
+    auto l1 = std::make_shared<MyRenderEngine::PointLight>(glm::vec3(-10.0f, 10.0f, 10.0f), glm::vec3(300.0f, 300.0f, 300.0f));
+    auto l2 = std::make_shared<MyRenderEngine::PointLight>(glm::vec3(10.0f, 10.0f, 10.0f), glm::vec3(300.0f, 300.0f, 300.0f));
+    auto l3 = std::make_shared<MyRenderEngine::PointLight>(glm::vec3(-10.0f, -10.0f, 10.0f), glm::vec3(300.0f, 300.0f, 300.0f));
+    auto l4 = std::make_shared<MyRenderEngine::PointLight>(glm::vec3(10.0f, -10.0f, 10.0f), glm::vec3(300.0f, 300.0f, 300.0f));
+
+    myRenderEngine.AddLight(l1);
+    myRenderEngine.AddLight(l2);
+    myRenderEngine.AddLight(l3);
+    myRenderEngine.AddLight(l4);
 
     myRenderEngine.StartRenderLoop();
-
     return 0;
 }
 

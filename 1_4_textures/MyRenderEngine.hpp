@@ -36,6 +36,7 @@ namespace MyRenderEngine {
 	const glm::vec4 ZERO_VEC(0.0f);
 	const glm::vec4 ONE_VEC(1.0f);
 
+	class ILight;
 	/*
 		由MyRenderEngine传入IRenderable中
 	*/
@@ -43,6 +44,8 @@ namespace MyRenderEngine {
 		glm::mat4 projection_matrix;
 		glm::mat4 view_matrix;
 		glm::vec3 camera_pos;
+
+		std::vector<std::shared_ptr<ILight>> lights; //有待改进，因为这样其实位置数据不是组织在一起的
 	};
 
 	/*
@@ -61,6 +64,28 @@ namespace MyRenderEngine {
 
 		virtual glm::mat4 GetModelMatrix() = 0;
 		virtual RenderableInfo GetRenderableInfo() = 0;
+	};
+
+	class ILight {
+	public:
+		virtual glm::vec3 GetPos() const = 0;
+		virtual glm::vec3 GetLightColor() const = 0;
+
+		virtual ~ILight() {}
+	};
+
+	class PointLight: public ILight {
+	public:
+		glm::vec3 pos;
+		glm::vec3 color;
+		PointLight(glm::vec3 pos, glm::vec3 color): pos(pos), color(color) {}
+
+		glm::vec3 GetPos() const override {
+			return pos;
+		}
+		glm::vec3 GetLightColor() const override {
+			return color;
+		}
 	};
 
 	glm::mat4 CalculateModelMatrix(const glm::vec3& position, const glm::vec3& rotation = glm::vec3(0.0f), const glm::vec3& scale = glm::vec3(1.0f)) { // 原来引用能设置默认变量吗……
@@ -195,26 +220,8 @@ namespace MyRenderEngine {
 		MouseController mouseController;
 		KeyboardController keyboardController;
 
-		std::vector<std::shared_ptr<IRenderable>> opaqueRenderables, transparentRenderables; // 渲染对象列表
-
-		// Framebuffer
-		// TODO: 生命周期闭环
-		unsigned int opaqueFBO;
-		unsigned int transparentFBO;
-
-		unsigned int opaqueTexture;
-		unsigned int depthTexture;
-
-		unsigned int accumTexture;
-		unsigned int revealTexture;
-
-		// screenQuad
-		unsigned int screenQuadVAO;
-		unsigned int screenQuadVBO;
-		int screenQuadVerticesCount;
-
-		Shader* compositeShader; // OIT Use
-		Shader* screenShader;
+		std::vector<std::shared_ptr<IRenderable>> opaqueRenderables; // 渲染对象列表
+		std::vector<std::shared_ptr<ILight>> lights; // 光源对象
 
 		// glfw: whenever the window size changed (by OS or user resize) this callback function executes
 		void FramebufferSizeCallback(GLFWwindow* window, int width, int height) {
@@ -226,24 +233,15 @@ namespace MyRenderEngine {
 		}
 
 		void AddRenderable(const std::shared_ptr<IRenderable>& r) {
-			if (r->GetRenderableInfo().isOpaque) {
-				opaqueRenderables.emplace_back(r);
-			}
-			else {
-				transparentRenderables.emplace_back(r);
-			}
+			opaqueRenderables.emplace_back(r);
+		}
+
+		void AddLight(const std::shared_ptr<ILight>& l) {
+			lights.emplace_back(l);
 		}
 
 		void SetCameraPos(const glm::vec3& pos) {
 			camera.Position = pos;
-		}
-
-		void SetCompositeShader(Shader* shader) {
-			compositeShader = shader;
-		}
-
-		void SetScreenShader(Shader* shader){
-			screenShader = shader;
 		}
 
 #ifdef USE_IMGUI
@@ -266,34 +264,6 @@ namespace MyRenderEngine {
 		}
 #endif
 
-		void SetupScreenQuad() {
-			static float quadVertices[] = {
-				// positions        // uv
-				-1.0f, -1.0f, 0.0f,	0.0f, 0.0f,
-				 1.0f, -1.0f, 0.0f, 1.0f, 0.0f,
-				 1.0f,  1.0f, 0.0f, 1.0f, 1.0f,
-
-				 1.0f,  1.0f, 0.0f, 1.0f, 1.0f,
-				-1.0f,  1.0f, 0.0f, 0.0f, 1.0f,
-				-1.0f, -1.0f, 0.0f, 0.0f, 0.0f
-			};
-
-			screenQuadVerticesCount = 6;
-
-			glGenVertexArrays(1, &screenQuadVAO);
-			glGenBuffers(1, &screenQuadVBO);
-
-			glBindVertexArray(screenQuadVAO);
-			glBindBuffer(GL_ARRAY_BUFFER, screenQuadVBO);
-			glBufferData(GL_ARRAY_BUFFER, sizeof(quadVertices), quadVertices, GL_STATIC_DRAW);
-
-			glEnableVertexAttribArray(0);
-			glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 5 * sizeof(float), (void*)0);
-			glEnableVertexAttribArray(1);
-			glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 5 * sizeof(float), (void*)(3 * sizeof(float)));
-			glBindVertexArray(0);
-		}
-
 		void SetupGlobalOpenglState() {
 			glEnable(GL_DEPTH_TEST);
 			//glEnable(GL_BLEND);
@@ -306,65 +276,6 @@ namespace MyRenderEngine {
 		}
 
 		void SetupFrameBuffers() {
-			glGenFramebuffers(1, &opaqueFBO);
-			glGenFramebuffers(1, &transparentFBO);
-
-			// opaqueTexture
-			glGenTextures(1, &opaqueTexture);
-			glBindTexture(GL_TEXTURE_2D, opaqueTexture);
-			glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA16F, SCR_WIDTH, SCR_HEIGHT, 0, GL_RGBA, GL_HALF_FLOAT, NULL); // 注意这里用的是 gl_half_float
-			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-			glBindTexture(GL_TEXTURE_2D, 0);
-
-			// depthTexture
-			glGenTextures(1, &depthTexture);
-			glBindTexture(GL_TEXTURE_2D, depthTexture);
-			glTexImage2D(GL_TEXTURE_2D, 0, GL_DEPTH_COMPONENT, SCR_WIDTH, SCR_HEIGHT,
-				0, GL_DEPTH_COMPONENT, GL_FLOAT, NULL);
-			glBindTexture(GL_TEXTURE_2D, 0);
-
-			// Bind opaqueTexture & depthTexture to opaqueFBO
-			glBindFramebuffer(GL_FRAMEBUFFER, opaqueFBO);
-			glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, opaqueTexture, 0);
-			glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_TEXTURE_2D, depthTexture, 0);
-
-			if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE)
-				std::cout << "ERROR::FRAMEBUFFER:: Opaque framebuffer is not complete!" << std::endl;
-
-			glBindFramebuffer(GL_FRAMEBUFFER, 0);
-
-			// set up attachments for transparent framebuffer
-			// accumTexture
-			glGenTextures(1, &accumTexture);
-			glBindTexture(GL_TEXTURE_2D, accumTexture);
-			glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA16F, SCR_WIDTH, SCR_HEIGHT, 0, GL_RGBA, GL_HALF_FLOAT, NULL);
-			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-			glBindTexture(GL_TEXTURE_2D, 0);
-
-			// revealTexture
-			glGenTextures(1, &revealTexture);
-			glBindTexture(GL_TEXTURE_2D, revealTexture);
-			glTexImage2D(GL_TEXTURE_2D, 0, GL_R8, SCR_WIDTH, SCR_HEIGHT, 0, GL_RED, GL_FLOAT, NULL); // 注意这里因为只有一个通道所以会有所不同！
-			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-			glBindTexture(GL_TEXTURE_2D, 0);
-
-			// Bind accumTexture & revealTexture & depthTexture to transparent
-			glBindFramebuffer(GL_FRAMEBUFFER, transparentFBO);
-			glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, accumTexture, 0);
-			glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT1, GL_TEXTURE_2D, revealTexture, 0);
-			glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_TEXTURE_2D, depthTexture, 0); // opaque framebuffer's depth texture
-
-			// don't forget to explicitly tell OpenGL that your transparent framebuffer has two draw buffers
-			const GLenum transparentDrawBuffers[] = { GL_COLOR_ATTACHMENT0, GL_COLOR_ATTACHMENT1 };
-			glDrawBuffers(2, transparentDrawBuffers);
-
-			if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE)
-				std::cout << "ERROR::FRAMEBUFFER:: Transparent framebuffer is not complete!" << std::endl;
-
-			glBindFramebuffer(GL_FRAMEBUFFER, 0);
 
 		}
 
@@ -372,6 +283,7 @@ namespace MyRenderEngine {
 		void StartRenderLoop() {
 
 			RenderInfo renderInfo;
+			renderInfo.lights = lights;
 
 			while (!glfwWindowShouldClose(window)) {
 				// poll IO events (keys pressed/released, mouse moved etc.)
@@ -422,59 +334,11 @@ namespace MyRenderEngine {
 				glDisable(GL_BLEND);
 				glClearColor(backgroundColor.r, backgroundColor.g, backgroundColor.b, backgroundColor.a);
 
-				glBindFramebuffer(GL_FRAMEBUFFER, opaqueFBO);
 				glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
 				for (auto&& r : opaqueRenderables) {
 					r->Render(renderInfo);
 				}
-
-				// -> Transparent (transparent pass)
-				glDepthMask(GL_FALSE);
-				glEnable(GL_BLEND);
-				glBlendFunci(0, GL_ONE, GL_ONE);
-				glBlendFunci(1, GL_ZERO, GL_ONE_MINUS_SRC_COLOR);
-				glBlendEquation(GL_FUNC_ADD);
-
-				glBindFramebuffer(GL_FRAMEBUFFER, transparentFBO);
-				glClearBufferfv(GL_COLOR, 0, &ZERO_VEC[0]); // 新函数
-				glClearBufferfv(GL_COLOR, 1, &ONE_VEC[0]);
-
-				for (auto&& r : transparentRenderables) {
-					r->Render(renderInfo);
-				}
-
-				// render composite image (composite pass)
-				glDepthFunc(GL_ALWAYS);
-				glEnable(GL_BLEND);
-				glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-
-				glBindFramebuffer(GL_FRAMEBUFFER, opaqueFBO);
-
-				compositeShader->use();
-				glActiveTexture(GL_TEXTURE0);
-				glBindTexture(GL_TEXTURE_2D, accumTexture);
-				glActiveTexture(GL_TEXTURE1);
-				glBindTexture(GL_TEXTURE_2D, revealTexture);
-
-				glBindVertexArray(screenQuadVAO);
-				glDrawArrays(GL_TRIANGLES, 0, screenQuadVerticesCount);
-
-				// render screenQuad (draw to backbuffer) (final pass)
-				
-				glDisable(GL_DEPTH_TEST);
-				glDepthMask(GL_TRUE); // enable depth writes so glClear won't ignore clearing the depth buffer
-				glDisable(GL_BLEND);
-
-				glBindFramebuffer(GL_FRAMEBUFFER, 0);
-				glClearColor(backgroundColor.r, backgroundColor.g, backgroundColor.b, backgroundColor.a);
-				glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT | GL_STENCIL_BUFFER_BIT);
-
-				screenShader->use();
-				glActiveTexture(GL_TEXTURE0);
-				glBindTexture(GL_TEXTURE_2D, opaqueTexture);
-				glBindVertexArray(screenQuadVAO);
-				glDrawArrays(GL_TRIANGLES, 0, screenQuadVerticesCount);
 
 
 #ifdef USE_IMGUI
@@ -516,21 +380,11 @@ namespace MyRenderEngine {
 #ifdef USE_IMGUI
 			SetupImGui();
 #endif
-			SetupScreenQuad();
-			//SetupGlobalOpenglState();
+			SetupGlobalOpenglState();
 			SetupFrameBuffers();
 		}
 
 		~MyRenderEngine() {
-			glDeleteVertexArrays(1, &screenQuadVAO);
-			glDeleteBuffers(1, &screenQuadVBO);
-			glDeleteTextures(1, &opaqueTexture);
-			glDeleteTextures(1, &depthTexture);
-			glDeleteTextures(1, &accumTexture);
-			glDeleteTextures(1, &revealTexture);
-			glDeleteFramebuffers(1, &opaqueFBO);
-			glDeleteFramebuffers(1, &transparentFBO);
-
 			std::cout << "MyrenderEngine Destructor executed." << std::endl;
 		}
 
@@ -681,5 +535,181 @@ namespace MyRenderEngine {
 			}
 		}
 	};
+
+	struct PBR{
+		glm::vec3 albedo;
+		float metallic;
+		float roughness;
+		float ao;
+	};
+
+	class Sphere : public IRenderable {
+	public:
+		static unsigned int sphereVAO; // -1 （其实默认是0）
+		static unsigned int sphereVBO;
+		static unsigned int sphereEBO;
+		static unsigned int indexCount;
+
+		Shader* shader;
+		glm::mat4 modelMatrix;
+		PBR pbr;
+
+		void Render(const RenderInfo& renderInfo) override {
+			shader->use();
+
+			shader->setMatrix4("projection", renderInfo.projection_matrix);
+			shader->setMatrix4("view", renderInfo.view_matrix);
+			shader->setMatrix4("model", modelMatrix);
+
+			shader->setMatrix3("normalMatrix", glm::transpose(glm::inverse(glm::mat3(modelMatrix)))); // 注意这个的类型
+
+			// 相机位置
+			shader->setVec3("viewPos", renderInfo.camera_pos);
+
+			// 光源设置
+			for (int i = 0; i < renderInfo.lights.size(); i++) {
+				auto l = renderInfo.lights[i];
+				shader->setVec3("lightPos[" + std::to_string(i) + "]", l->GetPos());
+				shader->setVec3("lightColors[" + std::to_string(i) + "]", l->GetLightColor());
+			}
+
+			// 材质设置
+			shader->setVec3("albedo", pbr.albedo);
+			shader->setFloat("metallic", pbr.metallic);
+			shader->setFloat("roughness", pbr.roughness);
+			shader->setFloat("ao", pbr.ao);
+
+			glBindVertexArray(sphereVAO);
+			glDrawElements(GL_TRIANGLE_STRIP, indexCount, GL_UNSIGNED_INT, 0);
+		}
+
+		glm::mat4 GetModelMatrix() override {
+			return modelMatrix;
+		}
+
+		RenderableInfo GetRenderableInfo() override {
+			return { true };
+		}
+
+		// 建立第一个sphereVAO
+		void BuildVAO() {
+			// 建立第一个sphereVAO
+			glGenVertexArrays(1, &sphereVAO);
+
+			glGenBuffers(1, &sphereVBO);
+			glGenBuffers(1, &sphereEBO);
+
+			std::vector<glm::vec3> positions;
+			std::vector<glm::vec2> uv;
+			std::vector<glm::vec3> normals;
+			std::vector<unsigned int> indices;
+
+			const unsigned int X_SEGMENTS = 64;
+			const unsigned int Y_SEGMENTS = 64;
+			const float PI = 3.14159265359f;
+			// 球坐标映射
+			for (unsigned int x = 0; x <= X_SEGMENTS; ++x)
+			{
+				for (unsigned int y = 0; y <= Y_SEGMENTS; ++y)
+				{
+					float xSegment = (float)x / (float)X_SEGMENTS;
+					float ySegment = (float)y / (float)Y_SEGMENTS;
+					float xPos = std::cos(xSegment * 2.0f * PI) * std::sin(ySegment * PI);
+					float yPos = std::cos(ySegment * PI);
+					float zPos = std::sin(xSegment * 2.0f * PI) * std::sin(ySegment * PI);
+
+					positions.push_back(glm::vec3(xPos, yPos, zPos));
+					uv.push_back(glm::vec2(xSegment, ySegment));
+					normals.push_back(glm::vec3(xPos, yPos, zPos));
+				}
+			}
+
+			bool oddRow = false;
+			for (unsigned int y = 0; y < Y_SEGMENTS; ++y)
+			{
+				if (!oddRow) // even rows: y == 0, y == 2; and so on
+				{
+					for (unsigned int x = 0; x <= X_SEGMENTS; ++x)
+					{
+						indices.push_back(y * (X_SEGMENTS + 1) + x);
+						indices.push_back((y + 1) * (X_SEGMENTS + 1) + x);
+					}
+				}
+				else
+				{
+					for (int x = X_SEGMENTS; x >= 0; --x)
+					{
+						indices.push_back((y + 1) * (X_SEGMENTS + 1) + x);
+						indices.push_back(y * (X_SEGMENTS + 1) + x);
+					}
+				}
+				oddRow = !oddRow;
+			}
+			indexCount = static_cast<unsigned int>(indices.size());
+
+			std::vector<float> data;
+			for (unsigned int i = 0; i < positions.size(); ++i)
+			{
+				data.push_back(positions[i].x);
+				data.push_back(positions[i].y);
+				data.push_back(positions[i].z);
+				if (normals.size() > 0)
+				{
+					data.push_back(normals[i].x);
+					data.push_back(normals[i].y);
+					data.push_back(normals[i].z);
+				}
+				if (uv.size() > 0)
+				{
+					data.push_back(uv[i].x);
+					data.push_back(uv[i].y);
+				}
+			}
+
+			glBindVertexArray(sphereVAO);
+			glBindBuffer(GL_ARRAY_BUFFER, sphereVBO);
+			glBufferData(GL_ARRAY_BUFFER, data.size() * sizeof(float), &data[0], GL_STATIC_DRAW);
+			glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, sphereEBO);
+			glBufferData(GL_ELEMENT_ARRAY_BUFFER, indices.size() * sizeof(unsigned int), &indices[0], GL_STATIC_DRAW);
+			unsigned int stride = (3 + 2 + 3) * sizeof(float);
+
+			glEnableVertexAttribArray(0);
+			glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, stride, (void*)0);
+			glEnableVertexAttribArray(1);
+			glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, stride, (void*)(3 * sizeof(float)));
+			glEnableVertexAttribArray(2);
+			glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, stride, (void*)(6 * sizeof(float)));
+			glBindVertexArray(0);
+		}
+
+		Sphere(int row, int col, int row_size, int col_size, Shader* shader) : shader(shader) {
+			if (sphereVAO == 0) {
+				BuildVAO();
+			}
+
+			// modelMatrix, pbr
+			static const float SPACEING = 2.5f;
+			glm::vec3 translate = glm::vec3(row * SPACEING, col * SPACEING, 0.0f);
+			modelMatrix = CalculateModelMatrix(translate);
+
+			pbr.albedo = glm::vec3(0.5f, 0.0f, 0.0f);
+			pbr.ao = 1.0f;
+			pbr.metallic = row * 1.0f / row_size;
+			pbr.roughness = glm::clamp(col * 1.0f / col_size, 0.05f, 1.0f);
+		}
+
+		~Sphere() override {
+			// 释放资源
+			glDeleteVertexArrays(1, &sphereVAO);
+			glDeleteBuffers(1, &sphereVBO);
+			glDeleteBuffers(1, &sphereEBO);
+		}
+
+	};
+
+	unsigned int Sphere::sphereVAO = 0;
+	unsigned int Sphere::sphereVBO = 0;
+	unsigned int Sphere::sphereEBO = 0;
+	unsigned int Sphere::indexCount = 0;
 
 } // namespace MyRenderEngine
