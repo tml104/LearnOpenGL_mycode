@@ -17,15 +17,24 @@
 
 #include "MyRenderEngine.hpp"
 
+unsigned int loadTexture(char const* path, bool gammaCorrection);
+unsigned int loadCubemap(vector<std::string> faces);
+
 int main()
 {
     MyRenderEngine::MyRenderEngine myRenderEngine;
 
-    Shader pbrShader("./shaders/6_2_PBR/pbr.vs", "./shaders/6_2_PBR/pbr.fs");
+    Shader pbrShader("./shaders/6_2_PBR/pbr.vs", "./shaders/6_2_PBR/pbr_with_textures.fs");
 
-    //std::shared_ptr<MyRenderEngine::Quad> redQuad = std::make_shared<MyRenderEngine::Quad>(1, &(solidShader));
-    //std::shared_ptr<MyRenderEngine::Quad> greenQuad = std::make_shared<MyRenderEngine::Quad>(2, &(transparentShader));
-    //std::shared_ptr<MyRenderEngine::Quad> blueQuad = std::make_shared<MyRenderEngine::Quad>(3, &(transparentShader));
+    // Load Textures
+    MyRenderEngine::PBR pbr;
+    pbr.albedo_texture = loadTexture("./resources/pbr_iron/rustediron2_basecolor.png", false);
+    pbr.normal_texture = loadTexture("./resources/pbr_iron/rustediron2_normal.png" , false);
+    pbr.metallic_texture = loadTexture("./resources/pbr_iron/rustediron2_metallic.png", false);
+    pbr.roughness_texture = loadTexture("./resources/pbr_iron/rustediron2_roughness.png", false);
+    pbr.ao_texture = loadTexture("./resources/pbr_iron/ao.png", false);
+
+
 
     const int SPHERE_ROW_SIZE = 10;
     const int SPHERE_COL_SIZE = 10;
@@ -33,7 +42,7 @@ int main()
     for (int i = 0; i < SPHERE_ROW_SIZE; i++) {
         for (int j = 0; j < SPHERE_COL_SIZE; j++) {
 
-            auto sphere = std::make_shared<MyRenderEngine::Sphere>(i,j, SPHERE_ROW_SIZE, SPHERE_COL_SIZE,&pbrShader);
+            auto sphere = std::make_shared<MyRenderEngine::Sphere>(i,j, SPHERE_ROW_SIZE, SPHERE_COL_SIZE, pbr, &pbrShader);
             myRenderEngine.AddRenderable(sphere);
         }
     }

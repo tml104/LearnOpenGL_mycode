@@ -537,10 +537,11 @@ namespace MyRenderEngine {
 	};
 
 	struct PBR{
-		glm::vec3 albedo;
-		float metallic;
-		float roughness;
-		float ao;
+		unsigned int albedo_texture;
+		unsigned int normal_texture;
+		unsigned int metallic_texture;
+		unsigned int roughness_texture;
+		unsigned int ao_texture;
 	};
 
 	class Sphere : public IRenderable {
@@ -574,10 +575,25 @@ namespace MyRenderEngine {
 			}
 
 			// ²ÄÖÊÉèÖÃ
-			shader->setVec3("albedo", pbr.albedo);
-			shader->setFloat("metallic", pbr.metallic);
-			shader->setFloat("roughness", pbr.roughness);
-			shader->setFloat("ao", pbr.ao);
+			//shader->setVec3("albedo", pbr.albedo);
+			//shader->setFloat("metallic", pbr.metallic);
+			//shader->setFloat("roughness", pbr.roughness);
+			//shader->setFloat("ao", pbr.ao);
+
+			glActiveTexture(GL_TEXTURE0);
+			glBindTexture(GL_TEXTURE_2D, pbr.albedo_texture);
+
+			glActiveTexture(GL_TEXTURE1);
+			glBindTexture(GL_TEXTURE_2D, pbr.normal_texture);
+
+			glActiveTexture(GL_TEXTURE2);
+			glBindTexture(GL_TEXTURE_2D, pbr.metallic_texture);
+
+			glActiveTexture(GL_TEXTURE3);
+			glBindTexture(GL_TEXTURE_2D, pbr.roughness_texture);
+
+			glActiveTexture(GL_TEXTURE4);
+			glBindTexture(GL_TEXTURE_2D, pbr.ao_texture);
 
 			glBindVertexArray(sphereVAO);
 			glDrawElements(GL_TRIANGLE_STRIP, indexCount, GL_UNSIGNED_INT, 0);
@@ -682,7 +698,7 @@ namespace MyRenderEngine {
 			glBindVertexArray(0);
 		}
 
-		Sphere(int row, int col, int row_size, int col_size, Shader* shader) : shader(shader) {
+		Sphere(int row, int col, int row_size, int col_size, PBR pbr, Shader* shader) : shader(shader), pbr(pbr) {
 			if (sphereVAO == 0) {
 				BuildVAO();
 			}
@@ -692,10 +708,10 @@ namespace MyRenderEngine {
 			glm::vec3 translate = glm::vec3(row * SPACEING, col * SPACEING, 0.0f);
 			modelMatrix = CalculateModelMatrix(translate);
 
-			pbr.albedo = glm::vec3(0.5f, 0.0f, 0.0f);
-			pbr.ao = 1.0f;
-			pbr.metallic = row * 1.0f / row_size;
-			pbr.roughness = glm::clamp(col * 1.0f / col_size, 0.05f, 1.0f);
+			//pbr.albedo = glm::vec3(0.5f, 0.0f, 0.0f);
+			//pbr.ao = 1.0f;
+			//pbr.metallic = row * 1.0f / row_size;
+			//pbr.roughness = glm::clamp(col * 1.0f / col_size, 0.05f, 1.0f);
 		}
 
 		~Sphere() override {
