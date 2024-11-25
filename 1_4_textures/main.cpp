@@ -25,19 +25,20 @@ int main()
 {
     MyRenderEngine::MyRenderEngine myRenderEngine;
 
-    Shader pbrShader("./shaders/6_3_PBR_Diffuse_Irradiance/pbr.vs", "./shaders/6_3_PBR_Diffuse_Irradiance/pbr_with_textures.fs");
+    Shader pbrShader("./shaders/6_3_PBR_Diffuse_Irradiance/pbr.vs", "./shaders/6_3_PBR_Diffuse_Irradiance/pbr.fs");
     Shader equirectangularToCubemapShader("./shaders/6_3_PBR_Diffuse_Irradiance/cubemap.vs", "./shaders/6_3_PBR_Diffuse_Irradiance/cubemap.fs");
+    Shader irradianceConvolutionShader("./shaders/6_3_PBR_Diffuse_Irradiance/cubemap.vs", "./shaders/6_3_PBR_Diffuse_Irradiance/irradiance_convolution.fs");
     Shader backgroundShader("./shaders/6_3_PBR_Diffuse_Irradiance/background.vs", "./shaders/6_3_PBR_Diffuse_Irradiance/background.fs");
 
     // Load Textures
-    MyRenderEngine::PBR pbr;
+    MyRenderEngine::PBRTextures pbr;
     pbr.albedo_texture = loadTexture("./resources/pbr_iron/rustediron2_basecolor.png", false);
     pbr.normal_texture = loadTexture("./resources/pbr_iron/rustediron2_normal.png" , false);
     pbr.metallic_texture = loadTexture("./resources/pbr_iron/rustediron2_metallic.png", false);
     pbr.roughness_texture = loadTexture("./resources/pbr_iron/rustediron2_roughness.png", false);
     pbr.ao_texture = loadTexture("./resources/pbr_iron/ao.png", false);
 
-    MyRenderEngine::HDRTexture hdrTextures;
+    MyRenderEngine::HDRTextures hdrTextures;
     hdrTextures.hdr_texture = loadHdrTexture("./resources/hdr/newport_loft.hdr");
 
     const int SPHERE_ROW_SIZE = 10;
@@ -46,7 +47,7 @@ int main()
     for (int i = 0; i < SPHERE_ROW_SIZE; i++) {
         for (int j = 0; j < SPHERE_COL_SIZE; j++) {
 
-            auto sphere = std::make_shared<MyRenderEngine::Sphere>(i,j, SPHERE_ROW_SIZE, SPHERE_COL_SIZE, pbr, &pbrShader);
+            auto sphere = std::make_shared<MyRenderEngine::Sphere>(i,j, SPHERE_ROW_SIZE, SPHERE_COL_SIZE, &pbrShader, myRenderEngine);
             myRenderEngine.AddRenderable(sphere);
         }
     }
@@ -57,6 +58,7 @@ int main()
     // 添加后加对象
     myRenderEngine.cube = cube;
     myRenderEngine.equirectangularToCubemapShader = &equirectangularToCubemapShader;
+    myRenderEngine.irradianceConvolutionShader = &irradianceConvolutionShader;
     myRenderEngine.backgroundShader = &backgroundShader;
     myRenderEngine.hdrTexture = hdrTextures.hdr_texture;
 

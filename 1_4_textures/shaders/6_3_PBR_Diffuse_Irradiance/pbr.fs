@@ -9,10 +9,15 @@ in VS_OUT {
 
 // uniform sampler2D ballTexture;
 
+// IBL
+layout (binding = 0) uniform samplerCube irradianceMap;
+
 uniform vec3 albedo;
 uniform float metallic;
 uniform float roughness;
 uniform float ao;
+
+uniform bool spaceFlag;
 
 // lights
 uniform vec3 lightPos[4];
@@ -67,6 +72,8 @@ void main()
     vec3 N = normalize(fs_in.WorldNormal);
     vec3 V = normalize(viewPos - fs_in.WorldPos);
 
+    vec3 R = reflect(-V, N);
+
     vec3 F0 = vec3(0.04); 
     F0 = mix(F0, albedo, metallic);
 
@@ -100,7 +107,21 @@ void main()
         // Lo += radiance;
     }
 
-    vec3 ambient = vec3(0.03) * albedo * ao;
+    // ambient lighting (we now use IBL as the ambient term)
+    vec3 ambient;
+    if(spaceFlag)
+    {
+        ambient = vec3(0.03) * albedo * ao;
+    }
+    else{
+        vec3 kS = fresnelSchlick(max(dot(N, V), 0.0), F0);
+        vec3 kD = 1.0 - kS;
+        kD *= 1.0 - metallic;
+        vec3 irradiance = texture(irradianceMap, N).rgb;
+        vec3 diffuse      = irradiance * albedo;
+        // vec3 diffuse      = irradiance;
+        ambient = (kD * diffuse) * ao;
+    }
 
     vec3 color = ambient + Lo;
 

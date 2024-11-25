@@ -181,6 +181,8 @@ namespace MyRenderEngine {
 	class KeyboardController {
 	public:
 		float keyboardMovementSpeed;
+		bool spaceFlag;
+		bool spacePressed;
 
 		void KeyboardProcessInput(GLFWwindow* window, float deltaTime) {
 			if (glfwGetKey(window, GLFW_KEY_ESCAPE) == GLFW_PRESS)
@@ -215,12 +217,16 @@ namespace MyRenderEngine {
 			if (glfwGetKey(window, GLFW_KEY_L) == GLFW_PRESS)
 				camera.ProcessMouseMovement(keyboardMovementSpeed, 0.0f);
 
+			ProcessToggleKey(window, GLFW_KEY_SPACE, spaceFlag, spacePressed);
 		}
 
 		KeyboardController(Camera& icamera) :
 			camera(icamera),
 			keyboardMovementSpeed(5.0f)
-		{}
+		{
+			spaceFlag = false;
+			spacePressed = false;
+		}
 
 	private:
 		Camera& camera;
@@ -258,10 +264,12 @@ namespace MyRenderEngine {
 
 		// textures
 		unsigned int envCubemap;
+		unsigned int irradianceCubemap;
 		unsigned int hdrTexture; // [后加]
 
 		// shaders
 		Shader* equirectangularToCubemapShader;// [后加]
+		Shader* irradianceConvolutionShader;// [后加]
 		Shader* backgroundShader;// [后加]
 
 		// glfw: whenever the window size changed (by OS or user resize) this callback function executes
@@ -320,6 +328,7 @@ namespace MyRenderEngine {
 			glGenFramebuffers(1, &captureFBO);
 			glGenRenderbuffers(1, &captureRBO);
 
+			// 正常的cubemap（无卷积）
 			glGenTextures(1, &envCubemap);
 			glBindTexture(GL_TEXTURE_CUBE_MAP, envCubemap);
 			for (unsigned int i = 0; i < 6; i++) {
@@ -330,10 +339,22 @@ namespace MyRenderEngine {
 			glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_WRAP_R, GL_CLAMP_TO_EDGE);
 			glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
 			glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+
+			// 卷积后的cubemap：注意下面分辨率的和上面有所不同
+			glGenTextures(1, &irradianceCubemap);
+			glBindTexture(GL_TEXTURE_CUBE_MAP, irradianceCubemap);
+			for (unsigned int i = 0; i < 6; i++) {
+				glTexImage2D(GL_TEXTURE_CUBE_MAP_POSITIVE_X + i, 0, GL_RGB16F, 32, 32, 0, GL_RGB, GL_FLOAT, nullptr);
+			}
+			glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+			glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+			glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_WRAP_R, GL_CLAMP_TO_EDGE);
+			glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+			glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
 		}
 
 		void StartRenderCubemap() {
-			glCheckError();
+			//glCheckError();
 			glBindFramebuffer(GL_FRAMEBUFFER, captureFBO);
 			glBindRenderbuffer(GL_RENDERBUFFER, captureRBO);
 			glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH_COMPONENT24, 512, 512);
@@ -365,9 +386,27 @@ namespace MyRenderEngine {
 				cube->Render(renderInfo);
 			}
 
-			glBindFramebuffer(GL_FRAMEBUFFER, 0);
+			// 卷积
+			glBindFramebuffer(GL_FRAMEBUFFER, captureFBO);
+			glBindRenderbuffer(GL_RENDERBUFFER, captureRBO);
+			glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH_COMPONENT24, 32, 32);
 
-			glCheckError();
+			irradianceConvolutionShader->use();
+			irradianceConvolutionShader->setMatrix4("projection", captureProjection);
+			glActiveTexture(GL_TEXTURE0);
+			glBindTexture(GL_TEXTURE_CUBE_MAP, envCubemap);
+
+			glViewport(0, 0, 32, 32); // don't forget to configure the viewport to the capture dimensions.
+			for (unsigned int i = 0; i < 6; i++) {
+				irradianceConvolutionShader->setMatrix4("view", captureViews[i]);
+				glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_CUBE_MAP_POSITIVE_X + i, irradianceCubemap, 0);
+				glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+
+				cube->Render(renderInfo);
+			}
+
+			glBindFramebuffer(GL_FRAMEBUFFER, 0);
+			//glCheckError();
 		}
 
 		void StartRenderLoop() {
@@ -426,6 +465,8 @@ namespace MyRenderEngine {
 				glClearColor(backgroundColor.r, backgroundColor.g, backgroundColor.b, backgroundColor.a);
 				glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
+				glActiveTexture(GL_TEXTURE0);
+				glBindTexture(GL_TEXTURE_CUBE_MAP, irradianceCubemap);
 				for (auto&& r : opaqueRenderables) {
 					r->Render(renderInfo);
 				}
@@ -635,7 +676,7 @@ namespace MyRenderEngine {
 		}
 	};
 
-	struct PBR{
+	struct PBRTextures{
 		unsigned int albedo_texture;
 		unsigned int normal_texture;
 		unsigned int metallic_texture;
@@ -643,8 +684,15 @@ namespace MyRenderEngine {
 		unsigned int ao_texture;
 	};
 
-	struct HDRTexture {
+	struct HDRTextures {
 		unsigned int hdr_texture;
+	};
+
+	struct PBR {
+		glm::vec3 albedo;
+		float metallic;
+		float roughness;
+		float ao;
 	};
 
 	class Cube : public IRenderable {
@@ -747,7 +795,7 @@ namespace MyRenderEngine {
 	unsigned int Cube::cubeVAO = 0;
 	unsigned int Cube::cubeVBO = 0;
 
-	class Sphere : public IRenderable {
+	class SphereWithPBRTextures : public IRenderable {
 	public:
 		static unsigned int sphereVAO;
 		static unsigned int sphereVBO;
@@ -756,7 +804,7 @@ namespace MyRenderEngine {
 
 		Shader* shader;
 		glm::mat4 modelMatrix;
-		PBR pbr;
+		PBRTextures pbr;
 
 		void Render(const RenderInfo& renderInfo) override {
 			shader->use();
@@ -901,7 +949,7 @@ namespace MyRenderEngine {
 			glBindVertexArray(0);
 		}
 
-		Sphere(int row, int col, int row_size, int col_size, PBR pbr, Shader* shader) : shader(shader), pbr(pbr) {
+		SphereWithPBRTextures(int row, int col, int row_size, int col_size, PBRTextures pbr, Shader* shader) : shader(shader), pbr(pbr) {
 			if (sphereVAO == 0) {
 				BuildVAO();
 			}
@@ -915,6 +963,181 @@ namespace MyRenderEngine {
 			//pbr.ao = 1.0f;
 			//pbr.metallic = row * 1.0f / row_size;
 			//pbr.roughness = glm::clamp(col * 1.0f / col_size, 0.05f, 1.0f);
+		}
+
+		~SphereWithPBRTextures() override {
+			// 释放资源
+			glDeleteVertexArrays(1, &sphereVAO);
+			glDeleteBuffers(1, &sphereVBO);
+			glDeleteBuffers(1, &sphereEBO);
+		}
+
+	};
+
+	unsigned int SphereWithPBRTextures::sphereVAO = 0;
+	unsigned int SphereWithPBRTextures::sphereVBO = 0;
+	unsigned int SphereWithPBRTextures::sphereEBO = 0;
+	unsigned int SphereWithPBRTextures::indexCount = 0;
+
+
+	class Sphere : public IRenderable {
+	public:
+		static unsigned int sphereVAO; // -1 （其实默认是0）
+		static unsigned int sphereVBO;
+		static unsigned int sphereEBO;
+		static unsigned int indexCount;
+
+		Shader* shader;
+		glm::mat4 modelMatrix;
+		PBR pbr;
+
+		MyRenderEngine& myRenderEngine; // 注意这里必须是引用哦
+
+		void Render(const RenderInfo& renderInfo) override {
+			shader->use();
+
+			shader->setMatrix4("projection", renderInfo.projection_matrix);
+			shader->setMatrix4("view", renderInfo.view_matrix);
+			shader->setMatrix4("model", modelMatrix);
+
+			shader->setMatrix3("normalMatrix", glm::transpose(glm::inverse(glm::mat3(modelMatrix)))); // 注意这个的类型
+
+			// 相机位置
+			shader->setVec3("viewPos", renderInfo.camera_pos);
+
+			// 光源设置
+			for (int i = 0; i < renderInfo.lights.size(); i++) {
+				auto l = renderInfo.lights[i];
+				shader->setVec3("lightPos[" + std::to_string(i) + "]", l->GetPos());
+				shader->setVec3("lightColors[" + std::to_string(i) + "]", l->GetLightColor());
+			}
+
+			// 材质设置
+			shader->setVec3("albedo", pbr.albedo);
+			shader->setFloat("metallic", pbr.metallic);
+			shader->setFloat("roughness", pbr.roughness);
+			shader->setFloat("ao", pbr.ao);
+
+			// 变量设置
+			shader->setBool("spaceFlag", myRenderEngine.keyboardController.spaceFlag);
+
+			glBindVertexArray(sphereVAO);
+			glDrawElements(GL_TRIANGLE_STRIP, indexCount, GL_UNSIGNED_INT, 0);
+		}
+
+		glm::mat4 GetModelMatrix() override {
+			return modelMatrix;
+		}
+
+		RenderableInfo GetRenderableInfo() override {
+			return { true };
+		}
+
+		// 建立第一个sphereVAO
+		void BuildVAO() {
+			// 建立第一个sphereVAO
+			glGenVertexArrays(1, &sphereVAO);
+
+			glGenBuffers(1, &sphereVBO);
+			glGenBuffers(1, &sphereEBO);
+
+			std::vector<glm::vec3> positions;
+			std::vector<glm::vec2> uv;
+			std::vector<glm::vec3> normals;
+			std::vector<unsigned int> indices;
+
+			const unsigned int X_SEGMENTS = 64;
+			const unsigned int Y_SEGMENTS = 64;
+			const float PI = 3.14159265359f;
+			// 球坐标映射
+			for (unsigned int x = 0; x <= X_SEGMENTS; ++x)
+			{
+				for (unsigned int y = 0; y <= Y_SEGMENTS; ++y)
+				{
+					float xSegment = (float)x / (float)X_SEGMENTS;
+					float ySegment = (float)y / (float)Y_SEGMENTS;
+					float xPos = std::cos(xSegment * 2.0f * PI) * std::sin(ySegment * PI);
+					float yPos = std::cos(ySegment * PI);
+					float zPos = std::sin(xSegment * 2.0f * PI) * std::sin(ySegment * PI);
+
+					positions.push_back(glm::vec3(xPos, yPos, zPos));
+					uv.push_back(glm::vec2(xSegment, ySegment));
+					normals.push_back(glm::vec3(xPos, yPos, zPos));
+				}
+			}
+
+			bool oddRow = false;
+			for (unsigned int y = 0; y < Y_SEGMENTS; ++y)
+			{
+				if (!oddRow) // even rows: y == 0, y == 2; and so on
+				{
+					for (unsigned int x = 0; x <= X_SEGMENTS; ++x)
+					{
+						indices.push_back(y * (X_SEGMENTS + 1) + x);
+						indices.push_back((y + 1) * (X_SEGMENTS + 1) + x);
+					}
+				}
+				else
+				{
+					for (int x = X_SEGMENTS; x >= 0; --x)
+					{
+						indices.push_back((y + 1) * (X_SEGMENTS + 1) + x);
+						indices.push_back(y * (X_SEGMENTS + 1) + x);
+					}
+				}
+				oddRow = !oddRow;
+			}
+			indexCount = static_cast<unsigned int>(indices.size());
+
+			std::vector<float> data;
+			for (unsigned int i = 0; i < positions.size(); ++i)
+			{
+				data.push_back(positions[i].x);
+				data.push_back(positions[i].y);
+				data.push_back(positions[i].z);
+				if (normals.size() > 0)
+				{
+					data.push_back(normals[i].x);
+					data.push_back(normals[i].y);
+					data.push_back(normals[i].z);
+				}
+				if (uv.size() > 0)
+				{
+					data.push_back(uv[i].x);
+					data.push_back(uv[i].y);
+				}
+			}
+
+			glBindVertexArray(sphereVAO);
+			glBindBuffer(GL_ARRAY_BUFFER, sphereVBO);
+			glBufferData(GL_ARRAY_BUFFER, data.size() * sizeof(float), &data[0], GL_STATIC_DRAW);
+			glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, sphereEBO);
+			glBufferData(GL_ELEMENT_ARRAY_BUFFER, indices.size() * sizeof(unsigned int), &indices[0], GL_STATIC_DRAW);
+			unsigned int stride = (3 + 2 + 3) * sizeof(float);
+
+			glEnableVertexAttribArray(0);
+			glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, stride, (void*)0);
+			glEnableVertexAttribArray(1);
+			glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, stride, (void*)(3 * sizeof(float)));
+			glEnableVertexAttribArray(2);
+			glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, stride, (void*)(6 * sizeof(float)));
+			glBindVertexArray(0);
+		}
+
+		Sphere(int row, int col, int row_size, int col_size, Shader* shader, MyRenderEngine& myRenderEngine) : shader(shader), myRenderEngine(myRenderEngine) {
+			if (sphereVAO == 0) {
+				BuildVAO();
+			}
+
+			// modelMatrix, pbr
+			static const float SPACEING = 2.5f;
+			glm::vec3 translate = glm::vec3(row * SPACEING, col * SPACEING, 0.0f);
+			modelMatrix = CalculateModelMatrix(translate);
+
+			pbr.albedo = glm::vec3(0.5f, 0.0f, 0.0f);
+			pbr.ao = 1.0f;
+			pbr.metallic = row * 1.0f / row_size;
+			pbr.roughness = glm::clamp(col * 1.0f / col_size, 0.05f, 1.0f);
 		}
 
 		~Sphere() override {
