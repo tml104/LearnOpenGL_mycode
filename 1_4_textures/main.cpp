@@ -19,12 +19,15 @@
 
 unsigned int loadTexture(char const* path, bool gammaCorrection);
 unsigned int loadCubemap(vector<std::string> faces);
+unsigned int loadHdrTexture(char const* path);
 
 int main()
 {
     MyRenderEngine::MyRenderEngine myRenderEngine;
 
-    Shader pbrShader("./shaders/6_2_PBR/pbr.vs", "./shaders/6_2_PBR/pbr_with_textures.fs");
+    Shader pbrShader("./shaders/6_3_PBR_Diffuse_Irradiance/pbr.vs", "./shaders/6_3_PBR_Diffuse_Irradiance/pbr_with_textures.fs");
+    Shader equirectangularToCubemapShader("./shaders/6_3_PBR_Diffuse_Irradiance/cubemap.vs", "./shaders/6_3_PBR_Diffuse_Irradiance/cubemap.fs");
+    Shader backgroundShader("./shaders/6_3_PBR_Diffuse_Irradiance/background.vs", "./shaders/6_3_PBR_Diffuse_Irradiance/background.fs");
 
     // Load Textures
     MyRenderEngine::PBR pbr;
@@ -34,7 +37,8 @@ int main()
     pbr.roughness_texture = loadTexture("./resources/pbr_iron/rustediron2_roughness.png", false);
     pbr.ao_texture = loadTexture("./resources/pbr_iron/ao.png", false);
 
-
+    MyRenderEngine::HDRTexture hdrTextures;
+    hdrTextures.hdr_texture = loadHdrTexture("./resources/hdr/newport_loft.hdr");
 
     const int SPHERE_ROW_SIZE = 10;
     const int SPHERE_COL_SIZE = 10;
@@ -47,6 +51,15 @@ int main()
         }
     }
 
+    // Add cube
+    auto cube = std::make_shared<MyRenderEngine::Cube>();
+
+    // 添加后加对象
+    myRenderEngine.cube = cube;
+    myRenderEngine.equirectangularToCubemapShader = &equirectangularToCubemapShader;
+    myRenderEngine.backgroundShader = &backgroundShader;
+    myRenderEngine.hdrTexture = hdrTextures.hdr_texture;
+
     // Add lights
     auto l1 = std::make_shared<MyRenderEngine::PointLight>(glm::vec3(-10.0f, 10.0f, 10.0f), glm::vec3(300.0f, 300.0f, 300.0f));
     auto l2 = std::make_shared<MyRenderEngine::PointLight>(glm::vec3(10.0f, 10.0f, 10.0f), glm::vec3(300.0f, 300.0f, 300.0f));
@@ -58,6 +71,8 @@ int main()
     myRenderEngine.AddLight(l3);
     myRenderEngine.AddLight(l4);
 
+
+    myRenderEngine.StartRenderCubemap();
     myRenderEngine.StartRenderLoop();
     return 0;
 }
@@ -146,4 +161,30 @@ unsigned int loadCubemap(vector<std::string> faces)
     glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_WRAP_R, GL_CLAMP_TO_EDGE);
 
     return textureID;
+}
+
+unsigned int loadHdrTexture(char const* path) {
+    unsigned int hdrTextureID;
+
+    int width, height, nrChannels;
+    stbi_set_flip_vertically_on_load(true);
+    float* data = stbi_loadf(path, &width, &height, &nrChannels, 0);
+    if (data) {
+        glGenTextures(1, &hdrTextureID);
+        glBindTexture(GL_TEXTURE_2D, hdrTextureID);
+
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB16F, width, height, 0, GL_RGB, GL_FLOAT, data);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+
+        stbi_image_free(data);
+    }
+    else {
+
+        std::cout << "Failed to load HDR image." << std::endl;
+    }
+
+    return hdrTextureID;
 }
