@@ -14,7 +14,7 @@ uniform mat4 projection;
 uniform mat4 view;
 uniform mat4 model;
 
-uniform mat3 normalMatrix; // ?
+uniform mat3 normalMatrix; // 等价于：glm::transpose(glm::inverse(glm::mat3(modelMatrix)))，在cpu中提前计算好而免去在着色器中计算
 
 void main()
 {

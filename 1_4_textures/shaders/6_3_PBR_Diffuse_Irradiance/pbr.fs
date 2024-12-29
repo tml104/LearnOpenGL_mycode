@@ -11,6 +11,8 @@ in VS_OUT {
 
 // IBL
 layout (binding = 0) uniform samplerCube irradianceMap;
+layout (binding = 1) uniform samplerCube prefilterMap;
+layout (binding = 2) uniform sampler2D brdfLUT;
 
 uniform vec3 albedo;
 uniform float metallic;
@@ -114,13 +116,21 @@ void main()
         ambient = vec3(0.03) * albedo * ao;
     }
     else{
+        // IBL ambient
         vec3 kS = fresnelSchlick(max(dot(N, V), 0.0), F0);
         vec3 kD = 1.0 - kS;
         kD *= 1.0 - metallic;
         vec3 irradiance = texture(irradianceMap, N).rgb;
         vec3 diffuse      = irradiance * albedo;
         // vec3 diffuse      = irradiance;
-        ambient = (kD * diffuse) * ao;
+
+        // IBL specular
+        const float MAX_REFLECTION_LOD = 4.0; // 5个lod（cpu程序中指定的），所以这里是0~4
+        vec3 prefilteredColor = textureLod(prefilterMap, R, roughness * MAX_REFLECTION_LOD).rgb;
+        vec2 brdf  = texture(brdfLUT, vec2(max(dot(N, V), 0.0), roughness)).rg;
+        vec3 specular = prefilteredColor * (kS * brdf.x + brdf.y);
+        
+        ambient = (kD * diffuse + specular) * ao;
     }
 
     vec3 color = ambient + Lo;

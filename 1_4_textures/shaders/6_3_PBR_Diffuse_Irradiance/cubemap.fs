@@ -2,7 +2,7 @@
 out vec4 FragColor;
 in vec3 WorldPos;
 
-layout (binding = 0) uniform sampler2D equirectangularMap;
+layout (binding = 0) uniform sampler2D equirectangularMap; // 输入：环境立方体贴图，但是是以等距柱状投影方式存储，在读取前需要转换为球形投影
 
 const vec2 invAtan = vec2(0.1591, 0.3183);
 vec2 SampleSphericalMap(vec3 v)

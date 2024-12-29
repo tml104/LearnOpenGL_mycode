@@ -28,15 +28,19 @@ int main()
     Shader pbrShader("./shaders/6_3_PBR_Diffuse_Irradiance/pbr.vs", "./shaders/6_3_PBR_Diffuse_Irradiance/pbr.fs");
     Shader equirectangularToCubemapShader("./shaders/6_3_PBR_Diffuse_Irradiance/cubemap.vs", "./shaders/6_3_PBR_Diffuse_Irradiance/cubemap.fs");
     Shader irradianceConvolutionShader("./shaders/6_3_PBR_Diffuse_Irradiance/cubemap.vs", "./shaders/6_3_PBR_Diffuse_Irradiance/irradiance_convolution.fs");
+
+    Shader prefilterShader("./shaders/6_3_PBR_Diffuse_Irradiance/cubemap.vs", "./shaders/6_3_PBR_Diffuse_Irradiance/prefilter.fs");
+    Shader brdfLUTShader("./shaders/6_3_PBR_Diffuse_Irradiance/brdf.vs", "./shaders/6_3_PBR_Diffuse_Irradiance/brdf.fs");
+
     Shader backgroundShader("./shaders/6_3_PBR_Diffuse_Irradiance/background.vs", "./shaders/6_3_PBR_Diffuse_Irradiance/background.fs");
 
     // Load Textures
-    MyRenderEngine::PBRTextures pbr;
-    pbr.albedo_texture = loadTexture("./resources/pbr_iron/rustediron2_basecolor.png", false);
-    pbr.normal_texture = loadTexture("./resources/pbr_iron/rustediron2_normal.png" , false);
-    pbr.metallic_texture = loadTexture("./resources/pbr_iron/rustediron2_metallic.png", false);
-    pbr.roughness_texture = loadTexture("./resources/pbr_iron/rustediron2_roughness.png", false);
-    pbr.ao_texture = loadTexture("./resources/pbr_iron/ao.png", false);
+    //MyRenderEngine::PBRTextures pbr;
+    //pbr.albedo_texture = loadTexture("./resources/pbr_iron/rustediron2_basecolor.png", false);
+    //pbr.normal_texture = loadTexture("./resources/pbr_iron/rustediron2_normal.png" , false);
+    //pbr.metallic_texture = loadTexture("./resources/pbr_iron/rustediron2_metallic.png", false);
+    //pbr.roughness_texture = loadTexture("./resources/pbr_iron/rustediron2_roughness.png", false);
+    //pbr.ao_texture = loadTexture("./resources/pbr_iron/ao.png", false);
 
     MyRenderEngine::HDRTextures hdrTextures;
     hdrTextures.hdr_texture = loadHdrTexture("./resources/hdr/newport_loft.hdr");
@@ -54,11 +58,15 @@ int main()
 
     // Add cube
     auto cube = std::make_shared<MyRenderEngine::Cube>();
+    auto screenQuad = std::make_shared<MyRenderEngine::ScreenQuad>();
 
     // 添加后加对象
     myRenderEngine.cube = cube;
+    myRenderEngine.screenQuad = screenQuad;
     myRenderEngine.equirectangularToCubemapShader = &equirectangularToCubemapShader;
     myRenderEngine.irradianceConvolutionShader = &irradianceConvolutionShader;
+    myRenderEngine.prefilterShader = &prefilterShader;
+    myRenderEngine.brdfLUTShader = &brdfLUTShader;
     myRenderEngine.backgroundShader = &backgroundShader;
     myRenderEngine.hdrTexture = hdrTextures.hdr_texture;
 
@@ -74,7 +82,7 @@ int main()
     myRenderEngine.AddLight(l4);
 
 
-    myRenderEngine.StartRenderCubemap();
+    myRenderEngine.StartPreCalculate();
     myRenderEngine.StartRenderLoop();
     return 0;
 }

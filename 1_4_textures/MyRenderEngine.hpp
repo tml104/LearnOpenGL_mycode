@@ -257,19 +257,25 @@ namespace MyRenderEngine {
 		// （懒得写一堆函数了，直接给public成员赋值吧）
 
 		std::shared_ptr<IRenderable> cube; // [后加] 背景立方体贴图渲染对象
+		std::shared_ptr<IRenderable> screenQuad; // [后加] 屏幕四边形，在这里用来渲染brdfLUT
 
 		// FrameBuffer
 		unsigned int captureFBO;
 		unsigned int captureRBO;
 
 		// textures
-		unsigned int envCubemap;
-		unsigned int irradianceCubemap;
+		unsigned int envCubemap; // 未卷积，只是用来将hdr贴图从等距柱状图转换为球形，需要使用mipmap
+		unsigned int irradianceCubemap; // 卷积后的漫反射部分环境贴图，用来做漫反射环境反射
+		unsigned int prefilterMap; // 卷积后的镜面反射部分左式环境贴图，用来计算镜面环境反射的左式子，需要使用mipmap
+		unsigned int brdfLUTMap; // 卷积后的镜面反射部分右式部分，用来计算镜面环境反射的右式子
+
 		unsigned int hdrTexture; // [后加]
 
 		// shaders
 		Shader* equirectangularToCubemapShader;// [后加]
 		Shader* irradianceConvolutionShader;// [后加]
+		Shader* prefilterShader; // [后加]
+		Shader* brdfLUTShader; // [后加]
 		Shader* backgroundShader;// [后加]
 
 		// glfw: whenever the window size changed (by OS or user resize) this callback function executes
@@ -318,15 +324,16 @@ namespace MyRenderEngine {
 			//glEnable(GL_BLEND);
 			//glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 
-			glDepthFunc(GL_LEQUAL); // 深度缓冲比较通过条件：小于等于
+			glDepthFunc(GL_LEQUAL); // 深度缓冲比较通过条件：小于等于（默认是less而非lequal）
 			glDepthMask(GL_TRUE); // 允许更新深度缓冲
 			glDisable(GL_BLEND);
+			glEnable(GL_TEXTURE_CUBE_MAP_SEAMLESS); // enable seamless cubemap sampling for lower mip levels in the pre-filter map
 			glClearColor(backgroundColor.r, backgroundColor.g, backgroundColor.b, backgroundColor.a);
 		}
 
 		void SetupFrameBuffers() {
 			glGenFramebuffers(1, &captureFBO);
-			glGenRenderbuffers(1, &captureRBO);
+			glGenRenderbuffers(1, &captureRBO); // 稍后会在StartRenderCubemap中对这两者做设置
 
 			// 正常的cubemap（无卷积）
 			glGenTextures(1, &envCubemap);
@@ -337,7 +344,7 @@ namespace MyRenderEngine {
 			glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
 			glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
 			glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_WRAP_R, GL_CLAMP_TO_EDGE);
-			glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+			glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR); // enable pre-filter mipmap sampling (combatting visible dots artifact)
 			glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
 
 			// 卷积后的cubemap：注意下面分辨率的和上面有所不同
@@ -351,10 +358,38 @@ namespace MyRenderEngine {
 			glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_WRAP_R, GL_CLAMP_TO_EDGE);
 			glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
 			glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+
+			// prefilterMap
+			glGenTextures(1, &prefilterMap);
+			glBindTexture(GL_TEXTURE_CUBE_MAP, prefilterMap);
+			for (unsigned int i = 0; i < 6; ++i)
+			{
+				glTexImage2D(GL_TEXTURE_CUBE_MAP_POSITIVE_X + i, 0, GL_RGB16F, 128, 128, 0, GL_RGB, GL_FLOAT, nullptr);
+			}
+			glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+			glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+			glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_WRAP_R, GL_CLAMP_TO_EDGE);
+			glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR); // be sure to set minification filter to mip_linear 
+			glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+			// generate mipmaps for the cubemap so OpenGL automatically allocates the required memory.
+			glGenerateMipmap(GL_TEXTURE_CUBE_MAP);
+
+			// brdfLUTMap
+			glGenTextures(1, &brdfLUTMap);
+			glBindTexture(GL_TEXTURE_2D, brdfLUTMap);
+			glTexImage2D(GL_TEXTURE_2D, 0, GL_RG16F, 512, 512, 0, GL_RG, GL_FLOAT, 0);
+			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+
+
 		}
 
-		void StartRenderCubemap() {
-			//glCheckError();
+		void StartPreCalculate() {
+			glCheckError();
+
+			// 为渲染到各类cubemap上作配置
 			glBindFramebuffer(GL_FRAMEBUFFER, captureFBO);
 			glBindRenderbuffer(GL_RENDERBUFFER, captureRBO);
 			glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH_COMPONENT24, 512, 512);
@@ -371,6 +406,7 @@ namespace MyRenderEngine {
 				glm::lookAt(glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(0.0f,  0.0f, -1.0f), glm::vec3(0.0f, -1.0f,  0.0f))
 			};
 
+			// 渲染等距柱状投影环境贴图到立方体贴图上
 			equirectangularToCubemapShader->use();
 			equirectangularToCubemapShader->setMatrix4("projection", captureProjection);
 			glActiveTexture(GL_TEXTURE0);
@@ -385,11 +421,16 @@ namespace MyRenderEngine {
 
 				cube->Render(renderInfo);
 			}
+			glBindFramebuffer(GL_FRAMEBUFFER, 0);
 
-			// 卷积
+			// 为立方体环境贴图生成mipmap：then let OpenGL generate mipmaps from first mip face (combatting visible dots artifact)
+			glBindTexture(GL_TEXTURE_CUBE_MAP, envCubemap);
+			glGenerateMipmap(GL_TEXTURE_CUBE_MAP);
+
+			// 卷积计算irradianceMap
 			glBindFramebuffer(GL_FRAMEBUFFER, captureFBO);
 			glBindRenderbuffer(GL_RENDERBUFFER, captureRBO);
-			glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH_COMPONENT24, 32, 32);
+			glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH_COMPONENT24, 32, 32); // 由于分辨率不同，这里需要重新分配大小
 
 			irradianceConvolutionShader->use();
 			irradianceConvolutionShader->setMatrix4("projection", captureProjection);
@@ -406,7 +447,49 @@ namespace MyRenderEngine {
 			}
 
 			glBindFramebuffer(GL_FRAMEBUFFER, 0);
-			//glCheckError();
+			glCheckError();
+
+			// 卷积计算prefilterMap（也即镜面反射左式部分）
+			prefilterShader->use();
+			prefilterShader->setMatrix4("projection", captureProjection);
+			glActiveTexture(GL_TEXTURE0);
+			glBindTexture(GL_TEXTURE_CUBE_MAP, envCubemap);
+
+			glBindFramebuffer(GL_FRAMEBUFFER, captureFBO);
+			unsigned int maxMipLevels = 5;
+			for (unsigned int mip = 0; mip < maxMipLevels; mip++) {
+				// reisze framebuffer according to mip-level size.
+				unsigned int mipWidth = static_cast<unsigned int>(128 * std::pow(0.5, mip));
+				unsigned int mipHeight = static_cast<unsigned int>(128 * std::pow(0.5, mip));
+				glBindRenderbuffer(GL_RENDERBUFFER, captureRBO);
+				glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH_COMPONENT24, mipWidth, mipHeight);
+				glViewport(0, 0, mipWidth, mipHeight);
+
+				float roughness = (float)mip / (float)(maxMipLevels - 1);
+				prefilterShader->setFloat("roughness", roughness);
+
+				for (unsigned int i = 0; i < 6; i++) {
+					prefilterShader->setMatrix4("view", captureViews[i]);
+					glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_CUBE_MAP_POSITIVE_X + i, prefilterMap, mip);
+					glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+
+					cube->Render(renderInfo);
+				}
+			}
+			glBindFramebuffer(GL_FRAMEBUFFER, 0);
+
+			// 卷积计算brdfLUT
+			glBindFramebuffer(GL_FRAMEBUFFER, captureFBO);
+			glBindRenderbuffer(GL_RENDERBUFFER, captureRBO);
+			glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH_COMPONENT24, 512, 512);
+			glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, brdfLUTMap, 0);
+
+			glViewport(0, 0, 512, 512);
+			brdfLUTShader->use();
+			glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+			screenQuad->Render(renderInfo);
+			glBindFramebuffer(GL_FRAMEBUFFER, 0);
+
 		}
 
 		void StartRenderLoop() {
@@ -467,6 +550,11 @@ namespace MyRenderEngine {
 
 				glActiveTexture(GL_TEXTURE0);
 				glBindTexture(GL_TEXTURE_CUBE_MAP, irradianceCubemap);
+				glActiveTexture(GL_TEXTURE1);
+				glBindTexture(GL_TEXTURE_CUBE_MAP, prefilterMap);
+				glActiveTexture(GL_TEXTURE2);
+				glBindTexture(GL_TEXTURE_2D, brdfLUTMap);
+
 				for (auto&& r : opaqueRenderables) {
 					r->Render(renderInfo);
 				}
@@ -673,6 +761,62 @@ namespace MyRenderEngine {
 				renderColor = glm::vec4(0.0, 0.0, 1.0, 0.5);
 				isOpaque = false;
 			}
+		}
+	};
+
+	class ScreenQuad : public IRenderable {
+	public:
+		unsigned int quadVAO;
+		unsigned int quadVBO;
+
+		int verticesCount;
+
+		glm::mat4 modelMatrix; // 其实没用
+		bool isOpaque;// 其实没用
+
+		void Render(const RenderInfo& renderInfo) override {
+			// without shader here
+
+			glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+
+			glBindVertexArray(quadVAO);
+			glDrawArrays(GL_TRIANGLE_STRIP, 0, verticesCount);
+			glBindVertexArray(0);
+		}
+
+		glm::mat4 GetModelMatrix() override {
+			return modelMatrix;
+		}
+
+		RenderableInfo GetRenderableInfo() override {
+			return { isOpaque };
+		}
+
+		ScreenQuad() {
+			static float quadVertices[] = {
+				// positions        // texture Coords
+				-1.0f,  1.0f, 0.0f, 0.0f, 1.0f,
+				-1.0f, -1.0f, 0.0f, 0.0f, 0.0f,
+				 1.0f,  1.0f, 0.0f, 1.0f, 1.0f,
+				 1.0f, -1.0f, 0.0f, 1.0f, 0.0f,
+			};
+
+			verticesCount = 4;
+
+			glGenVertexArrays(1, &quadVAO);
+			glGenBuffers(1, &quadVBO);
+
+			glBindVertexArray(quadVAO);
+				glBindBuffer(GL_ARRAY_BUFFER, quadVBO);
+				glBufferData(GL_ARRAY_BUFFER, sizeof(quadVertices), quadVertices, GL_STATIC_DRAW);
+
+				glEnableVertexAttribArray(0);
+				glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 5 * sizeof(float), (void*)0);
+				glEnableVertexAttribArray(1);
+				glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 5 * sizeof(float), (void*)(3 * sizeof(float)));
+			glBindVertexArray(0);
+
+			isOpaque = false;
 		}
 	};
 
